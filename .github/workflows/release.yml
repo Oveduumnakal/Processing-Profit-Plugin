@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags: ['R-*']
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub release
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PREV=$(git tag -l 'R-*' --sort=-v:refname | sed -n 2p)
+          echo "Releasing $TAG (previous: ${PREV:-none})"
+          gh release create "$TAG" \
+            --title "Release ${TAG#R-}" \
+            --generate-notes \
+            ${PREV:+--notes-start-tag "$PREV"} \
+            --latest
+
+      - name: Close the matching milestone
+        run: |
+          VER="${GITHUB_REF_NAME#R-}"
+          TITLE="Release $VER"
+          MILESTONE=$(gh api "repos/${GITHUB_REPOSITORY}/milestones?state=open" \
+            --jq ".[] | select(.title == \"$TITLE\")")
+          if [ -z "$MILESTONE" ]; then
+            echo "::error::No open milestone titled '$TITLE' found — close it manually or check the tag name."
+            exit 1
+          fi
+          OPEN=$(echo "$MILESTONE" | jq -r .open_issues)
+          NUMBER=$(echo "$MILESTONE" | jq -r .number)
+          if [ "$OPEN" != "0" ]; then
+            echo "::error::Milestone '$TITLE' still has $OPEN open issue(s) — not closing. Move or close them, then close the milestone manually."
+            exit 1
+          fi
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/milestones/$NUMBER" -f state=closed
+          echo "Closed milestone '$TITLE'."

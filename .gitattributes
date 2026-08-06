@@ -1,0 +1,17 @@
+# Normalize line endings so checked-in fixtures stay stable across platforms.
+# Git stores text as LF; without this, a Windows checkout (core.autocrlf=true)
+# rewrites files to CRLF and byte-for-byte fixture comparisons break.
+* text=auto
+
+# The persisted-schema snapshot is compared byte-for-byte against LF-joined
+# output in PersistedSchemaSnapshotTest, so it must stay LF in the working tree.
+*.snapshot text eol=lf
+
+# Shell scripts must stay LF; Windows batch scripts must stay CRLF.
+*.sh    text eol=lf
+gradlew text eol=lf
+*.bat   text eol=crlf
+
+# Binary assets git must not touch.
+*.png binary
+*.jar binary

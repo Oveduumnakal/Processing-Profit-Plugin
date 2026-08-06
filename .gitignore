@@ -1,0 +1,14 @@
+.gradle
+build
+.idea/
+.project
+.settings/
+.classpath
+nbactions.xml
+nb-configuration.xml
+nbproject/
+/.claude
+
+# Local planning + cross-session handoff notes — never commit.
+HANDOFF.md
+PLAN.md

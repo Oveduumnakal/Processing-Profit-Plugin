@@ -1,0 +1,63 @@
+name: PR checks
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, milestoned, demilestoned]
+
+jobs:
+  conventions:
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Milestone is set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          MILESTONE=$(gh pr view "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" --json milestone --jq '.milestone.title // ""')
+          if [ -z "$MILESTONE" ]; then
+            echo "::error::This PR has no milestone. Set the active release milestone (gh pr edit --milestone \"Release X.Y\")."
+            exit 1
+          fi
+          echo "Milestone: $MILESTONE"
+
+      - name: Branch follows naming convention
+        env:
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          if ! echo "$BRANCH" | grep -Eq '^[a-z]+/[a-z]+-[0-9]+-[a-z0-9-]+$'; then
+            echo "::error::Branch '$BRANCH' does not match 'type/type-issue#-short-title' (e.g. bug/bug-36-ltst-staleness)."
+            exit 1
+          fi
+          echo "Branch OK: $BRANCH"
+
+      - name: Body references its issue
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! echo "$BODY" | grep -Eiq 'closes #[0-9]+'; then
+            echo "::error::PR body must contain 'Closes #<issue>' so the merge closes its issue."
+            exit 1
+          fi
+          echo "Issue reference found."
+
+      - name: Check out the PR
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Schema changes are explained
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -q 'persisted-schema.snapshot'; then
+            if ! echo "$BODY" | grep -Eiq 'schema-change:'; then
+              echo "::error::This PR changes the persisted schema (persisted-schema.snapshot) but the body has no 'Schema-Change:' explanation. Add a 'Schema-Change:' line stating what changed, the legacy default, and why old data still loads."
+              exit 1
+            fi
+            echo "Schema change explained."
+          else
+            echo "No persisted-schema change."
+          fi
