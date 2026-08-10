@@ -47,6 +47,52 @@ tasks.register('checkStyleRules', Exec) {
 
 check.dependsOn checkStyleRules
 
+tasks.register('validateDataSnapshots') {
+	group = 'verification'
+	description = 'Fails the build if any bundled data snapshot is missing, empty, or malformed.'
+	def resources = file('src/main/resources')
+	def snapshots = [
+			'recipes.json', 'success_params.json',
+			'success_modifiers.json', 'failure_outputs.json',
+	]
+	inputs.files(snapshots.collect { new File(resources, it) })
+	doLast {
+		def slurper = new groovy.json.JsonSlurper()
+		snapshots.each { name ->
+			def f = new File(resources, name)
+			if (!f.exists() || f.length() == 0) {
+				throw new GradleException("Data snapshot ${name} is missing or empty.")
+			}
+			def data
+			try {
+				data = slurper.parse(f)
+			} catch (Exception e) {
+				throw new GradleException("Data snapshot ${name} is not valid JSON: ${e.message}")
+			}
+			if (data instanceof List && data.isEmpty()) {
+				throw new GradleException("Data snapshot ${name} is an empty array.")
+			}
+			if (data instanceof Map && data.isEmpty()) {
+				throw new GradleException("Data snapshot ${name} is an empty object.")
+			}
+		}
+		def recipes = slurper.parse(new File(resources, 'recipes.json'))
+		if (!recipes.any { it.outputs && it.outputs[0]?.itemId != null }) {
+			throw new GradleException("recipes.json has no recipe with a resolved output item id.")
+		}
+		def modifiers = slurper.parse(new File(resources, 'success_modifiers.json'))
+		def shapes = ['ADD_CHANCE', 'STOP_LEVEL', 'FORCE_SUCCESS', 'YIELD_MULT']
+		modifiers.each { m ->
+			if (!(m.effect in shapes)) {
+				throw new GradleException("success_modifiers.json entry '${m.id}' has bad effect '${m.effect}'.")
+			}
+		}
+		logger.lifecycle("Data snapshots OK: ${recipes.size()} recipes, ${modifiers.size()} modifiers.")
+	}
+}
+
+check.dependsOn validateDataSnapshots
+
 javadoc {
 	options.memberLevel = JavadocMemberLevel.PRIVATE
 	options.addStringOption('Xdoclint:syntax,html,reference', '-quiet')
