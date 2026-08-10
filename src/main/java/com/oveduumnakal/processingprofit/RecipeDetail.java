@@ -24,31 +24,44 @@
  */
 package com.oveduumnakal.processingprofit;
 
+import java.util.List;
+
 import lombok.Value;
 
 /**
- * A display row for the recipe table: the product name and id, per-action profit, GP/hr (with a
- * {@code throughputKnown} flag so a recipe with no tick data shows "n/a"), success percentage
- * ({@code null} for always-100% recipes, shown as "&mdash;"), the level requirement, GE volume, the
- * number makeable now (used by the On-hand and Shopping tabs; {@code -1} when not applicable), a
- * staleness flag, and the source {@link Recipe} so a click can rebuild the full detail breakdown. A view
- * model built by the plugin and rendered by {@link ProcessingProfitPanel}.
+ * The full, click-through breakdown behind one recipe's headline profit: the consumed input lines and
+ * their total cost, the non-consumed {@code tools}, the output lines with their pre-tax gross and the GE
+ * {@code tax}, the success-weighted {@code expectedNet} and the four throughput dimensions. When the
+ * recipe is {@code failCapable} it also carries the success breakdown ({@code baseChance} at the level
+ * &rarr; {@code finalChance} after {@code modifierNotes}, the {@code yieldMult}, and the
+ * {@code failureLabel}). {@code breakEven} lists the highest per-unit price each input can reach while
+ * the recipe still breaks even. A pure view-model built by {@link DetailBuilder}.
  */
 @Value
-public class RecipeRow
+public class RecipeDetail
 {
-	int itemId;
 	String product;
-	String skill;
+	int itemId;
+	List<CostLine> inputs;
+	List<String> tools;
+	long inputCost;
+	List<CostLine> outputs;
+	long grossOutput;
+	long tax;
+	long expectedNet;
 	long profitEach;
 	double roi;
+	boolean throughputKnown;
 	long gpPerHour;
 	double xpPerHour;
-	boolean throughputKnown;
-	Double successPercent;
-	int levelReq;
-	long volume;
-	int makeableNow;
+	double profitPerXp;
+	int level;
+	boolean failCapable;
+	Double baseChance;
+	Double finalChance;
+	double yieldMult;
+	List<String> modifierNotes;
+	String failureLabel;
+	List<CostLine> breakEven;
 	boolean stale;
-	Recipe recipe;
 }

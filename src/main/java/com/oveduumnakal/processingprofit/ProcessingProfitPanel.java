@@ -25,9 +25,13 @@
 package com.oveduumnakal.processingprofit;
 
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -40,6 +44,7 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -103,7 +108,11 @@ public class ProcessingProfitPanel extends PluginPanel
 	private List<RecipeRow> watchlistData = Collections.emptyList();
 	private List<RecipeRow> shoppingData = Collections.emptyList();
 
+	private final JPanel center = new JPanel(new CardLayout());
+	private final JPanel detailHolder = new JPanel(new BorderLayout());
+
 	private Consumer<SourcingMode> modeListener;
+	private Consumer<RecipeRow> selectionListener;
 	private boolean rebuildingSkills;
 
 	/**
@@ -131,8 +140,13 @@ public class ProcessingProfitPanel extends PluginPanel
 		tabGroup.addTab(watchlist);
 		tabGroup.addTab(shopping);
 
+		detailHolder.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		center.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		center.add(display, "list");
+		center.add(detailHolder, "detail");
+
 		add(header(tabGroup), BorderLayout.NORTH);
-		add(display, BorderLayout.CENTER);
+		add(center, BorderLayout.CENTER);
 
 		wireControls();
 		tabGroup.select(browse);
@@ -284,6 +298,17 @@ public class ProcessingProfitPanel extends PluginPanel
 	}
 
 	/**
+	 * Registers a callback fired when a recipe row is clicked, so the plugin can build and push its
+	 * {@link RecipeDetail} breakdown.
+	 *
+	 * @param listener the callback, invoked with the clicked row
+	 */
+	public void setSelectionListener(Consumer<RecipeRow> listener)
+	{
+		this.selectionListener = listener;
+	}
+
+	/**
 	 * The currently selected sourcing mode.
 	 *
 	 * @return the selected mode
@@ -297,6 +322,12 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		if (modeListener != null)
 			modeListener.accept(selectedMode());
+	}
+
+	private void fireSelection(RecipeRow row)
+	{
+		if (selectionListener != null)
+			selectionListener.accept(row);
 	}
 
 	/**
@@ -497,13 +528,22 @@ public class ProcessingProfitPanel extends PluginPanel
 		return label;
 	}
 
-	private static JPanel rowComponent(RecipeRow row, boolean showMakeable, boolean compact)
+	private JPanel rowComponent(RecipeRow row, boolean showMakeable, boolean compact)
 	{
 		JPanel panel = new JPanel(new BorderLayout(6, 1));
 		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		panel.setBorder(BorderFactory.createCompoundBorder(
 				new EmptyBorder(0, 0, compact ? 2 : 4, 0),
 				new EmptyBorder(compact ? 3 : 5, 7, compact ? 3 : 5, 7)));
+		panel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		panel.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				fireSelection(row);
+			}
+		});
 		if (row.isStale())
 			panel.setToolTipText(STALE_TOOLTIP);
 
@@ -584,5 +624,189 @@ public class ProcessingProfitPanel extends PluginPanel
 		dot.setForeground(STALE_DOT);
 		dot.setToolTipText(STALE_TOOLTIP);
 		return dot;
+	}
+
+	/**
+	 * Shows the full breakdown for one recipe in place of the tab list, with a Back button.
+	 *
+	 * @param detail the breakdown to render
+	 */
+	public void showDetail(RecipeDetail detail)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			detailHolder.removeAll();
+			detailHolder.add(detailCard(detail), BorderLayout.CENTER);
+			detailHolder.revalidate();
+			detailHolder.repaint();
+			((CardLayout) center.getLayout()).show(center, "detail");
+		});
+	}
+
+	private void showList()
+	{
+		((CardLayout) center.getLayout()).show(center, "list");
+	}
+
+	private JScrollPane detailCard(RecipeDetail d)
+	{
+		JPanel content = listPanel();
+		content.setBorder(new EmptyBorder(2, 2, 2, 2));
+
+		content.add(backButton());
+		content.add(detailTitle(d.getProduct()));
+		content.add(headline(signed(d.getProfitEach()) + " /ea",
+				d.getProfitEach() >= 0
+						? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR));
+
+		List<String> dims = new ArrayList<>();
+		dims.add("GP/hr: " + (d.isThroughputKnown() ? num(d.getGpPerHour()) : "n/a"));
+		dims.add("XP/hr: " + (d.isThroughputKnown() ? num(Math.round(d.getXpPerHour())) : "n/a"));
+		dims.add("Profit/XP: " + Math.round(d.getProfitPerXp()));
+		dims.add("ROI: " + Math.round(d.getRoi() * 100) + "%");
+		content.add(section("Throughput", dims));
+
+		content.add(section("Cost breakdown", costLines(d)));
+		if (d.isFailCapable())
+			content.add(section("Success @ level " + d.getLevel(), successLines(d)));
+
+		content.add(section("Break-even buy price", breakEvenLines(d)));
+		if (d.isStale())
+			content.add(section("Note", Collections.singletonList(STALE_TOOLTIP)));
+
+		return scroll(content);
+	}
+
+	private JButton backButton()
+	{
+		JButton back = new JButton("← Back");
+		back.setFont(FontManager.getRunescapeSmallFont());
+		back.setFocusable(false);
+		back.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		back.setForeground(Color.WHITE);
+		back.setBorder(new EmptyBorder(3, 6, 3, 6));
+		back.setAlignmentX(Component.LEFT_ALIGNMENT);
+		back.addActionListener(e -> showList());
+		capHeight(back);
+		return back;
+	}
+
+	private static JLabel detailTitle(String product)
+	{
+		JLabel label = new JLabel(product);
+		label.setFont(FontManager.getRunescapeBoldFont());
+		label.setForeground(Color.WHITE);
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		label.setBorder(new EmptyBorder(8, 2, 0, 2));
+		return label;
+	}
+
+	private static JLabel headline(String text, Color color)
+	{
+		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeBoldFont());
+		label.setForeground(color);
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		label.setBorder(new EmptyBorder(0, 2, 4, 2));
+		return label;
+	}
+
+	private static JPanel section(String title, List<String> lines)
+	{
+		JPanel panel = listPanel();
+		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.setBorder(new EmptyBorder(6, 2, 0, 2));
+
+		JLabel header = new JLabel(title);
+		header.setFont(FontManager.getRunescapeSmallFont());
+		header.setForeground(ColorScheme.BRAND_ORANGE);
+		header.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.add(header);
+
+		for (String line : lines)
+			panel.add(detailLine(line));
+
+		if (lines.isEmpty())
+			panel.add(detailLine("—"));
+
+		capHeight(panel);
+		return panel;
+	}
+
+	private static JLabel detailLine(String text)
+	{
+		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		label.setBorder(new EmptyBorder(1, 6, 0, 0));
+		return label;
+	}
+
+	private static List<String> costLines(RecipeDetail d)
+	{
+		List<String> lines = new ArrayList<>();
+		for (CostLine in : d.getInputs())
+			lines.add(costText(in));
+
+		if (!d.getTools().isEmpty())
+			lines.add("Tools: " + String.join(", ", d.getTools()));
+
+		lines.add("Input cost: -" + num(d.getInputCost()));
+		for (CostLine out : d.getOutputs())
+			lines.add(costText(out));
+
+		lines.add("Gross: +" + num(d.getGrossOutput()));
+		lines.add("GE tax: -" + num(d.getTax()));
+		if (d.isFailCapable())
+			lines.add("Success-weighted net: " + num(d.getExpectedNet()));
+
+		lines.add("Profit/ea: " + signed(d.getProfitEach()));
+		return lines;
+	}
+
+	private static String costText(CostLine line)
+	{
+		String unit = line.getUnitPrice() == PriceLookup.UNKNOWN ? "?" : num(line.getUnitPrice());
+		String total = line.getTotal() == PriceLookup.UNKNOWN ? "?" : num(line.getTotal());
+		return line.getQty() + "× " + line.getLabel() + "  @" + unit + " = " + total;
+	}
+
+	private static List<String> successLines(RecipeDetail d)
+	{
+		List<String> lines = new ArrayList<>();
+		if (d.getBaseChance() != null)
+			lines.add("Base chance: " + percent(d.getBaseChance()));
+
+		lines.addAll(d.getModifierNotes());
+		if (d.getFinalChance() != null)
+			lines.add("Final chance: " + percent(d.getFinalChance()));
+
+		if (d.getYieldMult() != 1.0)
+			lines.add("Yield: ×" + d.getYieldMult());
+
+		if (d.getFailureLabel() != null)
+			lines.add("On failure: " + d.getFailureLabel());
+
+		return lines;
+	}
+
+	private static List<String> breakEvenLines(RecipeDetail d)
+	{
+		List<String> lines = new ArrayList<>();
+		for (CostLine be : d.getBreakEven())
+			lines.add(be.getLabel() + ": " + num(be.getUnitPrice()));
+
+		return lines;
+	}
+
+	private static String percent(double chance)
+	{
+		return Math.round(chance * 100) + "%";
+	}
+
+	private static String num(long value)
+	{
+		return String.format("%,d", value);
 	}
 }

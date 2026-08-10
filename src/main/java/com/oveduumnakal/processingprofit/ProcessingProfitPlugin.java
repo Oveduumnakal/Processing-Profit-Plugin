@@ -109,6 +109,7 @@ public class ProcessingProfitPlugin extends Plugin
 	{
 		panel = new ProcessingProfitPanel();
 		panel.setModeListener(mode -> refreshOnHand());
+		panel.setSelectionListener(this::showDetail);
 		navButton = NavigationButton.builder()
 				.tooltip("Processing Profit")
 				.icon(navIcon())
@@ -264,6 +265,21 @@ public class ProcessingProfitPlugin extends Plugin
 		return prices.volume(outputId) >= config.minVolume();
 	}
 
+	private void showDetail(RecipeRow row)
+	{
+		Recipe recipe = row.getRecipe();
+		if (!loaded || recipe == null)
+			return;
+
+		executor.execute(() ->
+		{
+			PriceConfig cfg = priceConfig();
+			RecipeDetail detail = DetailBuilder.build(recipe, prices, cfg, BROWSE_LEVEL,
+					Collections.emptyList(), calculator);
+			panel.showDetail(detail);
+		});
+	}
+
 	private RecipeRow toRow(Recipe recipe, ProfitResult result, int makeable)
 	{
 		RecipeOutput primary = recipe.getOutputs().get(0);
@@ -276,7 +292,7 @@ public class ProcessingProfitPlugin extends Plugin
 		long volume = prices.volume(primary.getItemId());
 		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, result.getProfitEach(),
 				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
-				success, levelReq, volume, makeable, result.isStalePrices());
+				success, levelReq, volume, makeable, result.isStalePrices(), recipe);
 	}
 
 	private PriceConfig priceConfig()
