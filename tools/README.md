@@ -63,8 +63,25 @@ python3 tools/extract_success.py -o out.json
 BURN overrides LINEAR_INTERP on the same id (a cooked fish is never a gem cut),
 which also suppresses stray fishing/gathering chart entries landing on food ids.
 
-The curated `success_modifiers.json` + failure-outputs list (issue #3) are the
-small hand-maintained companion; recipes with no scraped model default to 100%.
+The curated `success_modifiers.json` + failure-outputs list are the small
+hand-maintained companion; recipes with no scraped model default to 100%.
+
+## Curated (hand-maintained, not scraped)
+
+These two `src/main/resources/` files have no uniform machine-readable source, so
+they are edited by hand. Both are tiny and change rarely; adding a new item is a
+one-line edit.
+
+- **`success_modifiers.json`** — items/areas/diaries that shift success or yield,
+  in four shapes: `ADD_CHANCE` (Hosidius +5/+10pp, jeweller's +20pp),
+  `STOP_LEVEL` (cooking gauntlets = per-fish gauntlet stop level swap),
+  `FORCE_SUCCESS` (cooking cape), `YIELD_MULT` (jeweller's double-gem ×1.10).
+  Each entry has `effect`, `value`, a `skill` gate, and an `items` gate (empty =
+  all items in the skill).
+- **`failure_outputs.json`** — what a failed attempt yields, keyed by the success
+  **output** item id → `{itemId, name, qty}`. Crushed gem (opal/jade/red topaz)
+  and burnt-food variants. Materials are consumed on failure regardless; most
+  burnt items are untradeable (0 GE value), crushed gem is the one that matters.
 
 ## Licensing / etiquette
 
