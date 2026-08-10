@@ -25,20 +25,18 @@
 package com.oveduumnakal.processingprofit;
 
 /**
- * The sourcing assumption under which a recipe's profitability is computed: {@code ON_HAND} (make only
- * from held bank/inventory stock), {@code BUY_TO_ORDER} (buy every input at the GE), or {@code HYBRID}
- * (consume held stock first, then buy the shortfall for a target run). Valuation is current market price
- * in every mode; the modes differ in how many actions are achievable and what must be bought.
+ * How items are priced: {@code GE_MARKET} (inputs at GE buy, outputs at GE sell, tax/limits/volume
+ * apply) or {@code IRONMAN} (outputs by alch/shop, inputs by shop/gather) &mdash; a v2 placeholder that
+ * currently behaves as GE market.
  */
-public enum SourcingMode
+public enum ValuationLens
 {
-	ON_HAND("On-hand"),
-	BUY_TO_ORDER("Buy to order"),
-	HYBRID("Hybrid");
+	GE_MARKET("GE market"),
+	IRONMAN("Ironman (v2)");
 
 	private final String label;
 
-	SourcingMode(String label)
+	ValuationLens(String label)
 	{
 		this.label = label;
 	}
