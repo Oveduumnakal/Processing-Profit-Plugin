@@ -29,47 +29,22 @@ import java.util.List;
 import lombok.Value;
 
 /**
- * One normalized processing recipe from the bundled {@code recipes.json}: a stable {@code recipeId}, all
- * declared {@code outputs} (multi-output and byproducts supported), the consumed {@code inputs}, the
- * non-consumed {@code tools}, the {@code skills} required, the action {@code ticks} ({@code null} when
- * unknown), members flag, {@code facility} label, quest/diary {@code requirements}, the level-scaled
- * {@code success} model, and the {@code onFailure} outcome (crushed gem, burnt food, or {@code null}).
+ * Legacy single-output recipe parsed from the OSRS Wiki recipe bucket at runtime: the {@code output}
+ * produced, the {@code materials} consumed (including secondaries such as runes), the {@code skills}
+ * required, the non-consumed {@code tools} and {@code facilities}, the game {@code ticks} it takes, and
+ * whether it is members-only.
  *
- * <p>Prices are never stored here; they are looked up live. Deserialized from JSON via Gson.
+ * <p>Superseded by the bundled multi-output {@link Recipe} model; retained only until the runtime
+ * Bucket fetch path is retired. Prices are not stored here; they are looked up live per lookup.
  */
 @Value
-public class Recipe
+public class BucketRecipe
 {
-	String recipeId;
-	List<RecipeOutput> outputs;
-	List<ItemStack> inputs;
-	List<ItemStack> tools;
-	List<SkillReq> skills;
-	Integer ticks;
-	String ticksNote;
+	RecipeItem output;
+	List<RecipeItem> materials;
+	List<RecipeSkill> skills;
+	String tools;
+	String facilities;
+	int ticks;
 	boolean members;
-	String facility;
-	Requirements requirements;
-	SuccessModel success;
-	FailureOutcome onFailure;
-
-	/**
-	 * The id of the primary (first-declared) output.
-	 *
-	 * @return the primary output item id, or {@code null} when there are no outputs
-	 */
-	public Integer primaryOutputId()
-	{
-		return outputs == null || outputs.isEmpty() ? null : outputs.get(0).getItemId();
-	}
-
-	/**
-	 * The primary (first-declared) skill requirement.
-	 *
-	 * @return the primary skill requirement, or {@code null} when none is declared
-	 */
-	public SkillReq primarySkill()
-	{
-		return skills == null || skills.isEmpty() ? null : skills.get(0);
-	}
 }

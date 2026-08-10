@@ -52,7 +52,7 @@ import okhttp3.Response;
  * fetches are layered on later; a single call currently returns up to {@link #DEFAULT_LIMIT} rows.
  */
 @Slf4j
-public class RecipeRepository
+public class BucketRecipeRepository
 {
 	private static final HttpUrl BUCKET_URL = HttpUrl.parse("https://oldschool.runescape.wiki/api.php");
 	private static final String USER_AGENT = "RuneLite Processing Profit Plugin";
@@ -62,10 +62,10 @@ public class RecipeRepository
 	private final Gson gson;
 
 	@Getter
-	private volatile List<Recipe> recipes = Collections.emptyList();
+	private volatile List<BucketRecipe> recipes = Collections.emptyList();
 
 	@Inject
-	public RecipeRepository(OkHttpClient httpClient, Gson gson)
+	public BucketRecipeRepository(OkHttpClient httpClient, Gson gson)
 	{
 		this.httpClient = httpClient;
 		this.gson = gson;
@@ -78,7 +78,7 @@ public class RecipeRepository
 	 */
 	public int refresh()
 	{
-		List<Recipe> fetched = fetch(DEFAULT_LIMIT);
+		List<BucketRecipe> fetched = fetch(DEFAULT_LIMIT);
 		if (!fetched.isEmpty())
 			this.recipes = fetched;
 
@@ -91,7 +91,7 @@ public class RecipeRepository
 	 * @param limit the maximum number of rows to request
 	 * @return the parsed recipes, or an empty list on any failure
 	 */
-	public List<Recipe> fetch(int limit)
+	public List<BucketRecipe> fetch(int limit)
 	{
 		HttpUrl url = BUCKET_URL.newBuilder()
 				.addQueryParameter("action", "bucket")
@@ -129,13 +129,13 @@ public class RecipeRepository
 	 * @param root the parsed response object, expected to hold a {@code bucket} array
 	 * @return the parsed recipes, or an empty list when the response has no rows
 	 */
-	static List<Recipe> parseResponse(JsonObject root)
+	static List<BucketRecipe> parseResponse(JsonObject root)
 	{
 		if (root == null || !root.has("bucket") || !root.get("bucket").isJsonArray())
 			return Collections.emptyList();
 
 		JsonArray rows = root.getAsJsonArray("bucket");
-		List<Recipe> parsed = new ArrayList<>(rows.size());
+		List<BucketRecipe> parsed = new ArrayList<>(rows.size());
 		for (JsonElement row : rows)
 		{
 			if (!row.isJsonObject())

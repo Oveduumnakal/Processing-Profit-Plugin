@@ -35,7 +35,7 @@ public class RecipeParsingTest
 	@Test
 	public void parsesOutputMaterialsAndSkill()
 	{
-		Recipe recipe = RecipeParser.parse(new JsonPrimitive(DIAMOND_BRACELET))
+		BucketRecipe recipe = RecipeParser.parse(new JsonPrimitive(DIAMOND_BRACELET))
 				.orElseThrow(AssertionError::new);
 		assertEquals("Diamond bracelet", recipe.getOutput().getName());
 		assertEquals(1, recipe.getOutput().getQuantity());
@@ -61,10 +61,10 @@ public class RecipeParsingTest
 	{
 		String body = "{\"bucket\":[{\"production_json\":" + GSON.toJson(DIAMOND_BRACELET) + "}]}";
 		JsonObject root = GSON.fromJson(body, JsonObject.class);
-		List<Recipe> recipes = RecipeRepository.parseResponse(root);
+		List<BucketRecipe> recipes = BucketRecipeRepository.parseResponse(root);
 		assertEquals(1, recipes.size());
 
-		Recipe first = recipes.get(0);
+		BucketRecipe first = recipes.get(0);
 		assertEquals("Diamond bracelet", first.getOutput().getName());
 	}
 

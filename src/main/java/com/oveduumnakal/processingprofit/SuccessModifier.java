@@ -24,52 +24,48 @@
  */
 package com.oveduumnakal.processingprofit;
 
-import java.util.List;
+import java.util.Set;
 
 import lombok.Value;
 
 /**
- * One normalized processing recipe from the bundled {@code recipes.json}: a stable {@code recipeId}, all
- * declared {@code outputs} (multi-output and byproducts supported), the consumed {@code inputs}, the
- * non-consumed {@code tools}, the {@code skills} required, the action {@code ticks} ({@code null} when
- * unknown), members flag, {@code facility} label, quest/diary {@code requirements}, the level-scaled
- * {@code success} model, and the {@code onFailure} outcome (crushed gem, burnt food, or {@code null}).
- *
- * <p>Prices are never stored here; they are looked up live. Deserialized from JSON via Gson.
+ * An item, area, or diary tier that changes an action's success or yield (jeweller's chisel, cooking
+ * gauntlets, Hosidius range, cooking cape). Loaded from {@code success_modifiers.json} and toggled by
+ * config or auto-detection. The {@code skill} gate and {@code items} gate decide which recipes it
+ * applies to; an empty {@code items} set means "all recipes in the skill".
  */
 @Value
-public class Recipe
+public class SuccessModifier
 {
-	String recipeId;
-	List<RecipeOutput> outputs;
-	List<ItemStack> inputs;
-	List<ItemStack> tools;
-	List<SkillReq> skills;
-	Integer ticks;
-	String ticksNote;
-	boolean members;
-	String facility;
-	Requirements requirements;
-	SuccessModel success;
-	FailureOutcome onFailure;
+	String id;
+	ModifierEffect effect;
+	double value;
+	String skill;
+	Set<Integer> items;
 
 	/**
-	 * The id of the primary (first-declared) output.
+	 * Whether this modifier applies to a recipe, per its skill and item gates.
 	 *
-	 * @return the primary output item id, or {@code null} when there are no outputs
+	 * @param r the recipe under evaluation
+	 * @return {@code true} when the modifier is in scope for the recipe
 	 */
-	public Integer primaryOutputId()
+	public boolean applies(Recipe r)
 	{
-		return outputs == null || outputs.isEmpty() ? null : outputs.get(0).getItemId();
-	}
+		SkillReq primary = r.primarySkill();
+		if (skill != null && (primary == null || !skill.equalsIgnoreCase(primary.getSkill())))
+			return false;
 
-	/**
-	 * The primary (first-declared) skill requirement.
-	 *
-	 * @return the primary skill requirement, or {@code null} when none is declared
-	 */
-	public SkillReq primarySkill()
-	{
-		return skills == null || skills.isEmpty() ? null : skills.get(0);
+		if (items == null || items.isEmpty())
+			return true;
+
+		for (RecipeOutput o : r.getOutputs())
+			if (o.getItemId() != null && items.contains(o.getItemId()))
+				return true;
+
+		for (ItemStack i : r.getInputs())
+			if (i.getItemId() != null && items.contains(i.getItemId()))
+				return true;
+
+		return false;
 	}
 }
