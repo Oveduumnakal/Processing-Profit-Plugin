@@ -1,0 +1,50 @@
+[
+  {
+    "id": "jewellers_chisel",
+    "effect": "ADD_CHANCE",
+    "value": 0.20,
+    "skill": "Crafting",
+    "items": [1625, 1627, 1629],
+    "note": "Jeweller's chisel: +20pp cut chance on opal / jade / red topaz (uncut ids)"
+  },
+  {
+    "id": "jewellers_double",
+    "effect": "YIELD_MULT",
+    "value": 1.10,
+    "skill": "Crafting",
+    "items": [],
+    "note": "Jeweller's chisel: ~x1.10 double-gem yield on any gem cut"
+  },
+  {
+    "id": "cooking_gauntlets",
+    "effect": "STOP_LEVEL",
+    "value": 0,
+    "skill": "Cooking",
+    "items": [377, 371, 7944, 383, 13439],
+    "note": "Cooking gauntlets: per-fish gauntlet stop level (raw lobster/swordfish/monkfish/shark/anglerfish ids)"
+  },
+  {
+    "id": "hosidius_easy",
+    "effect": "ADD_CHANCE",
+    "value": 0.05,
+    "skill": "Cooking",
+    "items": [],
+    "note": "Hosidius range (easy Kourend & Kebos diary): +5pp not-burn on any cooking"
+  },
+  {
+    "id": "hosidius_elite",
+    "effect": "ADD_CHANCE",
+    "value": 0.10,
+    "skill": "Cooking",
+    "items": [],
+    "note": "Hosidius range (elite Kourend & Kebos diary): +10pp not-burn on any cooking; supersedes easy"
+  },
+  {
+    "id": "cooking_cape",
+    "effect": "FORCE_SUCCESS",
+    "value": 0,
+    "skill": "Cooking",
+    "items": [],
+    "note": "Cooking cape: never burn any food"
+  }
+]
