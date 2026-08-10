@@ -28,7 +28,6 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.util.List;
 import java.util.function.Consumer;
 import javax.inject.Inject;
@@ -36,31 +35,35 @@ import javax.inject.Singleton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
+import javax.swing.plaf.ScrollBarUI;
 
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.materialtabs.MaterialTab;
 import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
+import net.runelite.client.ui.laf.RuneLiteScrollBarUI;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
  * The Processing Profit sidebar: a sourcing-mode and valuation-lens selector, an active-modifier status
  * line, and four tabs &mdash; Browse (all conversions), On-hand (makeable from current stock), Watchlist
- * (pinned), and Shopping (mat lists). Each tab renders a compact list of {@link RecipeRow}s. The panel is
- * a dumb view: the plugin builds the rows and pushes them in via the {@code set*Rows} methods.
+ * (pinned), and Shopping (mat lists). Each tab renders a compact list of {@link RecipeRow}s using the
+ * RuneLite fonts and colour scheme so it scales with the client. The panel is a dumb view: the plugin
+ * builds the rows and pushes them in via the {@code set*Rows} methods.
  */
 @Singleton
 public class ProcessingProfitPanel extends PluginPanel
 {
-	private static final Color PROFIT = new Color(76, 175, 80);
-	private static final Color LOSS = new Color(244, 67, 54);
 	private static final String[] MODE_LABELS = {"On-hand", "Buy to order", "Hybrid"};
 	private static final SourcingMode[] MODES =
 			{SourcingMode.ON_HAND, SourcingMode.BUY_TO_ORDER, SourcingMode.HYBRID};
@@ -85,14 +88,14 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		super(false);
 		setLayout(new BorderLayout());
-		setBorder(new EmptyBorder(8, 8, 8, 8));
+		setBorder(new EmptyBorder(10, 8, 8, 8));
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
 
 		JPanel display = new JPanel(new BorderLayout());
 		display.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
 		MaterialTabGroup tabGroup = new MaterialTabGroup(display);
-		tabGroup.setBorder(new EmptyBorder(8, 0, 4, 0));
+		tabGroup.setBorder(new EmptyBorder(8, 0, 6, 0));
 		MaterialTab browse = new MaterialTab("Browse", tabGroup, scroll(browseRows));
 		MaterialTab onHand = new MaterialTab("On-hand", tabGroup, scroll(onHandRows));
 		MaterialTab watchlist = new MaterialTab("Watch", tabGroup, scroll(watchlistRows));
@@ -116,18 +119,15 @@ public class ProcessingProfitPanel extends PluginPanel
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
 		header.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		JLabel title = new JLabel("Processing Profit");
-		title.setForeground(Color.WHITE);
-		title.setFont(title.getFont().deriveFont(Font.BOLD, 15f));
-		title.setAlignmentX(Component.LEFT_ALIGNMENT);
-		header.add(title);
+		styleCombo(modeSelector);
+		styleCombo(valuationSelector);
 		header.add(labelledRow("Sourcing", modeSelector));
 		header.add(labelledRow("Valuation", valuationSelector));
 
 		modifierLine.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		modifierLine.setFont(modifierLine.getFont().deriveFont(10f));
+		modifierLine.setFont(FontManager.getRunescapeSmallFont());
 		modifierLine.setAlignmentX(Component.LEFT_ALIGNMENT);
-		modifierLine.setBorder(new EmptyBorder(6, 0, 0, 0));
+		modifierLine.setBorder(new EmptyBorder(8, 0, 0, 0));
 		header.add(modifierLine);
 
 		tabGroup.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -135,19 +135,27 @@ public class ProcessingProfitPanel extends PluginPanel
 		return header;
 	}
 
-	private static JPanel labelledRow(String text, Component field)
+	private static void styleCombo(JComboBox<String> combo)
 	{
-		JPanel row = new JPanel(new BorderLayout(6, 0));
+		combo.setFont(FontManager.getRunescapeSmallFont());
+		combo.setFocusable(false);
+		combo.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		combo.setForeground(Color.WHITE);
+	}
+
+	private static JPanel labelledRow(String text, JComponent field)
+	{
+		JPanel row = new JPanel(new BorderLayout(8, 0));
 		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		row.setBorder(new EmptyBorder(4, 0, 0, 0));
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
 
 		JLabel label = new JLabel(text);
 		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		label.setPreferredSize(new Dimension(64, 20));
+		label.setFont(FontManager.getRunescapeSmallFont());
 		row.add(label, BorderLayout.WEST);
 		row.add(field, BorderLayout.CENTER);
+		capHeight(row);
 		return row;
 	}
 
@@ -165,12 +173,27 @@ public class ProcessingProfitPanel extends PluginPanel
 		wrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		wrap.add(rows, BorderLayout.NORTH);
 
-		JScrollPane scroll = new JScrollPane(wrap);
+		JScrollPane scroll = new JScrollPane(wrap,
+				ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+				ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 		scroll.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		scroll.setBorder(BorderFactory.createEmptyBorder());
-		scroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-		scroll.getVerticalScrollBar().setUnitIncrement(16);
+
+		JScrollBar vertical = scroll.getVerticalScrollBar();
+		vertical.setUI((ScrollBarUI) RuneLiteScrollBarUI.createUI(vertical));
+		vertical.setUnitIncrement(16);
 		return scroll;
+	}
+
+	/**
+	 * Caps a component's maximum height to its preferred (font-scaled) height so a vertical BoxLayout
+	 * does not stretch it.
+	 *
+	 * @param component the component to cap
+	 */
+	private static void capHeight(JComponent component)
+	{
+		component.setMaximumSize(new Dimension(Integer.MAX_VALUE, component.getPreferredSize().height));
 	}
 
 	/**
@@ -281,43 +304,49 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		JLabel label = new JLabel(text);
 		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		label.setFont(FontManager.getRunescapeSmallFont());
 		label.setBorder(new EmptyBorder(8, 2, 8, 2));
 		return label;
 	}
 
 	private static JPanel rowComponent(RecipeRow row, boolean showMakeable)
 	{
-		JPanel panel = new JPanel(new BorderLayout());
+		JPanel panel = new JPanel(new BorderLayout(6, 1));
 		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		panel.setBorder(new EmptyBorder(4, 6, 4, 6));
-		panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
+		panel.setBorder(BorderFactory.createCompoundBorder(
+				new EmptyBorder(0, 0, 4, 0),
+				new EmptyBorder(5, 7, 5, 7)));
 
-		JPanel top = new JPanel(new BorderLayout());
-		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		JLabel name = new JLabel((row.isStale() ? "• " : "") + row.getProduct());
+		name.setFont(FontManager.getRunescapeSmallFont());
 		name.setForeground(Color.WHITE);
+
 		JLabel profit = new JLabel(signed(row.getProfitEach()));
-		profit.setForeground(row.getProfitEach() >= 0 ? PROFIT : LOSS);
+		profit.setFont(FontManager.getRunescapeSmallFont());
+		profit.setForeground(row.getProfitEach() >= 0
+				? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR);
 		profit.setHorizontalAlignment(SwingConstants.RIGHT);
+
+		JLabel meta = new JLabel(metaText(row, showMakeable));
+		meta.setFont(FontManager.getRunescapeSmallFont());
+		meta.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		top.add(name, BorderLayout.CENTER);
 		top.add(profit, BorderLayout.EAST);
 
-		JLabel meta = new JLabel(metaText(row, showMakeable));
-		meta.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		meta.setFont(meta.getFont().deriveFont(10f));
-
 		panel.add(top, BorderLayout.NORTH);
 		panel.add(meta, BorderLayout.SOUTH);
-		panel.setBorder(BorderFactory.createCompoundBorder(
-				new EmptyBorder(2, 0, 2, 0),
-				new EmptyBorder(4, 6, 4, 6)));
+		capHeight(panel);
 		return panel;
 	}
 
 	private static String metaText(RecipeRow row, boolean showMakeable)
 	{
 		StringBuilder sb = new StringBuilder();
-		sb.append("gp/hr ").append(row.isThroughputKnown()
+		sb.append("gp/hr ");
+		sb.append(row.isThroughputKnown()
 				? QuantityFormatter.quantityToStackSize(row.getGpPerHour()) : "n/a");
 		if (row.getSuccessPercent() != null)
 		{
@@ -327,9 +356,13 @@ public class ProcessingProfitPanel extends PluginPanel
 			sb.append('%');
 		}
 
-		sb.append("  lvl ").append(row.getLevelReq());
+		sb.append("  lvl ");
+		sb.append(row.getLevelReq());
 		if (showMakeable && row.getMakeableNow() >= 0)
-			sb.append("  x").append(row.getMakeableNow());
+		{
+			sb.append("  x");
+			sb.append(row.getMakeableNow());
+		}
 
 		return sb.toString();
 	}
