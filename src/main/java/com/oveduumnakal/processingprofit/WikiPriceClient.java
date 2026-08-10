@@ -59,6 +59,10 @@ public class WikiPriceClient
 			"https://prices.runescape.wiki/api/v1/osrs/latest");
 	private static final HttpUrl MAPPING_URL = HttpUrl.parse(
 			"https://prices.runescape.wiki/api/v1/osrs/mapping");
+	private static final HttpUrl FIVE_MIN_URL = HttpUrl.parse(
+			"https://prices.runescape.wiki/api/v1/osrs/5m");
+	private static final HttpUrl ONE_HOUR_URL = HttpUrl.parse(
+			"https://prices.runescape.wiki/api/v1/osrs/1h");
 
 	private static final String USER_AGENT = "RuneLite Processing Profit Plugin";
 
@@ -85,6 +89,21 @@ public class WikiPriceClient
 
 			return Math.max(high, low);
 		}
+	}
+
+	/**
+	 * Interval-averaged prices for one item from the {@code /5m} or {@code /1h} endpoint:
+	 * {@code avgHigh} (instant-buy side) and {@code avgLow} (instant-sell side) are {@code null} when no
+	 * trades occurred on that side in the window; {@code highVolume}/{@code lowVolume} are the per-side
+	 * traded quantities in the same payload (the liquidity signal).
+	 */
+	@Value
+	public static class ItemAverages
+	{
+		Long avgHigh;
+		Long avgLow;
+		long highVolume;
+		long lowVolume;
 	}
 
 	/**
@@ -168,6 +187,81 @@ public class WikiPriceClient
 	}
 
 	/**
+	 * Fetches 5-minute average prices for every item from the {@code /5m} endpoint.
+	 *
+	 * @return a map of item id to averages, or an empty map on any failure
+	 */
+	public Map<Integer, ItemAverages> fetch5m()
+	{
+		return fetchAverages(FIVE_MIN_URL);
+	}
+
+	/**
+	 * Fetches 1-hour average prices for every item from the {@code /1h} endpoint, used as a fallback
+	 * when a {@code /5m} window has no trades on one side.
+	 *
+	 * @return a map of item id to averages, or an empty map on any failure
+	 */
+	public Map<Integer, ItemAverages> fetch1h()
+	{
+		return fetchAverages(ONE_HOUR_URL);
+	}
+
+	/**
+	 * Fetches interval-averaged prices from a {@code /5m}-shaped endpoint, keyed by item id.
+	 *
+	 * @param url the averages endpoint to query
+	 * @return a map of item id to {@link ItemAverages}, or an empty map on any failure
+	 */
+	private Map<Integer, ItemAverages> fetchAverages(HttpUrl url)
+	{
+		Request request = new Request.Builder()
+				.url(url)
+				.header("User-Agent", USER_AGENT)
+				.build();
+
+		try (Response response = httpClient.newCall(request).execute())
+		{
+			if (!response.isSuccessful() || response.body() == null)
+			{
+				log.warn("Wiki averages fetch failed: {}", response.code());
+				return Collections.emptyMap();
+			}
+
+			JsonObject root = gson.fromJson(response.body().charStream(), JsonObject.class);
+			JsonObject data = root == null ? null : root.getAsJsonObject("data");
+			if (data == null)
+				return Collections.emptyMap();
+
+			Map<Integer, ItemAverages> result = new HashMap<>(data.size());
+			for (Map.Entry<String, JsonElement> entry : data.entrySet())
+			{
+				try
+				{
+					int id = Integer.parseInt(entry.getKey());
+					JsonObject obj = entry.getValue().getAsJsonObject();
+					Long avgHigh = readNullableLong(obj, "avgHighPrice");
+					Long avgLow = readNullableLong(obj, "avgLowPrice");
+					long highVolume = readLong(obj, "highPriceVolume");
+					long lowVolume = readLong(obj, "lowPriceVolume");
+					result.put(id, new ItemAverages(avgHigh, avgLow, highVolume, lowVolume));
+				}
+				catch (NumberFormatException | IllegalStateException e)
+				{
+					// Skip a malformed entry rather than failing the whole fetch.
+				}
+			}
+
+			return result;
+		}
+		catch (IOException | JsonParseException e)
+		{
+			log.warn("Error fetching wiki averages", e);
+			return Collections.emptyMap();
+		}
+	}
+
+	/**
 	 * Fetches per-item GE metadata from the {@code /mapping} endpoint, keyed by item id. Each
 	 * {@link ItemMapping} carries the item {@code name}, letting the profit engine resolve recipe names.
 	 *
@@ -236,6 +330,22 @@ public class WikiPriceClient
 	{
 		if (!obj.has(key) || obj.get(key).isJsonNull())
 			return 0L;
+
+		return obj.get(key).getAsLong();
+	}
+
+	/**
+	 * Reads a long field, returning {@code null} when it is absent or JSON-null (distinguishing a
+	 * missing average from a genuine {@code 0}).
+	 *
+	 * @param obj the object to read from
+	 * @param key the field name
+	 * @return the field's value, or {@code null} when absent or null
+	 */
+	private static Long readNullableLong(JsonObject obj, String key)
+	{
+		if (!obj.has(key) || obj.get(key).isJsonNull())
+			return null;
 
 		return obj.get(key).getAsLong();
 	}
