@@ -74,6 +74,9 @@ import net.runelite.client.util.QuantityFormatter;
 public class ProcessingProfitPanel extends PluginPanel
 {
 	private static final int MAX_DISPLAY = 100;
+	private static final Color STALE_DOT = new Color(0xF0, 0xA3, 0x30);
+	private static final String STALE_TOOLTIP =
+			"Price may be stale (from the 1h fallback or a low-volume item)";
 	private static final String[] MODE_LABELS = {"On-hand", "Buy to order", "Hybrid"};
 	private static final SourcingMode[] MODES =
 			{SourcingMode.ON_HAND, SourcingMode.BUY_TO_ORDER, SourcingMode.HYBRID};
@@ -501,8 +504,10 @@ public class ProcessingProfitPanel extends PluginPanel
 		panel.setBorder(BorderFactory.createCompoundBorder(
 				new EmptyBorder(0, 0, compact ? 2 : 4, 0),
 				new EmptyBorder(compact ? 3 : 5, 7, compact ? 3 : 5, 7)));
+		if (row.isStale())
+			panel.setToolTipText(STALE_TOOLTIP);
 
-		JLabel name = new JLabel((row.isStale() ? "• " : "") + row.getProduct());
+		JLabel name = new JLabel(row.getProduct());
 		name.setFont(FontManager.getRunescapeSmallFont());
 		name.setForeground(Color.WHITE);
 
@@ -514,6 +519,9 @@ public class ProcessingProfitPanel extends PluginPanel
 
 		JPanel top = new JPanel(new BorderLayout(6, 0));
 		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		if (row.isStale())
+			top.add(staleDot(), BorderLayout.WEST);
+
 		top.add(name, BorderLayout.CENTER);
 		top.add(profit, BorderLayout.EAST);
 		panel.add(top, BorderLayout.NORTH);
@@ -536,9 +544,14 @@ public class ProcessingProfitPanel extends PluginPanel
 		sb.append("gp/hr ");
 		sb.append(row.isThroughputKnown()
 				? QuantityFormatter.quantityToStackSize(row.getGpPerHour()) : "n/a");
+		sb.append("  xp/hr ");
+		sb.append(row.isThroughputKnown()
+				? QuantityFormatter.quantityToStackSize(Math.round(row.getXpPerHour())) : "n/a");
 		sb.append("  roi ");
 		sb.append(Math.round(row.getRoi() * 100));
 		sb.append('%');
+		sb.append("  vol ");
+		sb.append(QuantityFormatter.quantityToStackSize(row.getVolume()));
 		if (row.getSuccessPercent() != null)
 		{
 			long pct = Math.round(row.getSuccessPercent() * 100);
@@ -562,5 +575,14 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		String magnitude = QuantityFormatter.quantityToStackSize(Math.abs(value));
 		return (value >= 0 ? "+" : "-") + magnitude;
+	}
+
+	private static JLabel staleDot()
+	{
+		JLabel dot = new JLabel("●");
+		dot.setFont(FontManager.getRunescapeSmallFont());
+		dot.setForeground(STALE_DOT);
+		dot.setToolTipText(STALE_TOOLTIP);
+		return dot;
 	}
 }
