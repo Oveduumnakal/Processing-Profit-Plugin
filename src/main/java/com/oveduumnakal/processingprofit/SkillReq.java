@@ -24,52 +24,18 @@
  */
 package com.oveduumnakal.processingprofit;
 
-import java.util.List;
-
 import lombok.Value;
 
 /**
- * One normalized processing recipe from the bundled {@code recipes.json}: a stable {@code recipeId}, all
- * declared {@code outputs} (multi-output and byproducts supported), the consumed {@code inputs}, the
- * non-consumed {@code tools}, the {@code skills} required, the action {@code ticks} ({@code null} when
- * unknown), members flag, {@code facility} label, quest/diary {@code requirements}, the level-scaled
- * {@code success} model, and the {@code onFailure} outcome (crushed gem, burnt food, or {@code null}).
- *
- * <p>Prices are never stored here; they are looked up live. Deserialized from JSON via Gson.
+ * A skill requirement of a recipe: the skill name, the level required, the experience granted per
+ * action ({@code null} when the wiki lists a non-numeric value such as "Varies"), and whether the level
+ * requirement is boostable.
  */
 @Value
-public class Recipe
+public class SkillReq
 {
-	String recipeId;
-	List<RecipeOutput> outputs;
-	List<ItemStack> inputs;
-	List<ItemStack> tools;
-	List<SkillReq> skills;
-	Integer ticks;
-	String ticksNote;
-	boolean members;
-	String facility;
-	Requirements requirements;
-	SuccessModel success;
-	FailureOutcome onFailure;
-
-	/**
-	 * The id of the primary (first-declared) output.
-	 *
-	 * @return the primary output item id, or {@code null} when there are no outputs
-	 */
-	public Integer primaryOutputId()
-	{
-		return outputs == null || outputs.isEmpty() ? null : outputs.get(0).getItemId();
-	}
-
-	/**
-	 * The primary (first-declared) skill requirement.
-	 *
-	 * @return the primary skill requirement, or {@code null} when none is declared
-	 */
-	public SkillReq primarySkill()
-	{
-		return skills == null || skills.isEmpty() ? null : skills.get(0);
-	}
+	String skill;
+	int level;
+	Double xp;
+	Boolean boostable;
 }

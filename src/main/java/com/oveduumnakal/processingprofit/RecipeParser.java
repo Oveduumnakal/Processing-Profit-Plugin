@@ -35,7 +35,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 
 /**
- * Parses a recipe bucket's {@code production_json} value into a {@link Recipe}.
+ * Parses a recipe bucket's {@code production_json} value into a {@link BucketRecipe}.
  *
  * <p>The wiki returns {@code production_json} as an escaped JSON string, so this unwraps a string
  * element before reading it. Numbers arrive as strings ({@code "58"}), and experience may be
@@ -56,7 +56,7 @@ public final class RecipeParser
 	 * @param raw the {@code production_json} value, either a JSON object or an escaped JSON string
 	 * @return the parsed recipe, or empty when the row has no usable output
 	 */
-	public static Optional<Recipe> parse(JsonElement raw)
+	public static Optional<BucketRecipe> parse(JsonElement raw)
 	{
 		JsonObject obj = unwrap(raw);
 		if (obj == null)
@@ -76,7 +76,7 @@ public final class RecipeParser
 		String facilities = readString(obj, "facilities");
 		int ticks = parseInt(readString(obj, "ticks"), 0);
 		boolean members = readBoolean(obj, "members");
-		return Optional.of(new Recipe(output, materials, skills, tools, facilities, ticks, members));
+		return Optional.of(new BucketRecipe(output, materials, skills, tools, facilities, ticks, members));
 	}
 
 	/**
