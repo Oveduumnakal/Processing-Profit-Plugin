@@ -1,0 +1,53 @@
+# Data extraction tools
+
+Build-/release-time scripts that regenerate the recipe and success-rate data
+bundled in the plugin jar. **They are never run at runtime** — recipes change
+rarely, so the generated JSON is committed and shipped, and refreshed per
+release. See `processing-profit-plugin-features.md` §4 for the full design.
+
+All scripts use only the Python 3 standard library — no `pip install` needed.
+
+## `extract_recipes.py` → `src/main/resources/recipes.json`
+
+Parses the `{{Recipe}}` template out of OSRS Wiki page wikitext (enumerated via
+`embeddedin=Template:Recipe`), capturing **every declared output** (not just
+`output1`, which is all the Bucket API exposes — so this is the authoritative
+extraction path). Resolves item names → ids via the prices `/mapping` endpoint.
+
+```sh
+python3 tools/extract_recipes.py                 # full extraction (~1 min)
+python3 tools/extract_recipes.py --limit 200     # first 200 pages (quick test)
+python3 tools/extract_recipes.py -o out.json     # custom output path
+```
+
+Output is a sorted array of recipes in the normalized schema (outputs[],
+inputs[], tools[], skills[], ticks, members, facility, requirements, success,
+onFailure, source). Every numeric wiki field is a string upstream and is parsed
+defensively; `experience` may be non-numeric (`"Varies"`) and becomes `null`.
+
+**Skipped by design:**
+
+- Rows with an empty `output` (gathering / minigame / bonus `{{Recipe}}` uses).
+- Recipes whose **primary output name does not resolve to a GE item id**. The
+  prices `/mapping` endpoint only covers GE-tradeable items, so untradeable
+  outputs (quest items, crystal gear, `(kp)` spears, etc.) are dropped — they
+  have no GE price and can't be valued under the v1 GE-market lens. The Ironman
+  / no-GE lens (v2) may later re-include these valued by alch/shop.
+
+## When to re-run
+
+- Before each plugin release (new content, renamed items, changed recipes).
+- Wired into CI so the bundled snapshot stays current (see issue #4).
+
+## Success-rate data
+
+`scrape_success.py` (issue #2) and the curated `success_modifiers.json` /
+failure-outputs list (issue #3) produce the success-math inputs, merged into the
+recipes at build time. Documented here as they land.
+
+## Licensing / etiquette
+
+Recipe and item data come from the **OSRS Wiki** (CC BY-NC-SA 3.0 — non-commercial,
+share-alike, attribution required) and the **OSRS Wiki Real-time Prices API**.
+Both scripts send a descriptive `User-Agent` and sleep between requests. Keep the
+plugin free and non-commercial, and attribute the wiki in the README.
