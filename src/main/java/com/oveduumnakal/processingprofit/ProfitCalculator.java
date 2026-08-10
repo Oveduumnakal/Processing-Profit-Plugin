@@ -24,6 +24,9 @@
  */
 package com.oveduumnakal.processingprofit;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * Pure, network-free profit math: evaluates a recipe into a {@link ProfitResult} across all four
  * dimensions (raw margin/ROI, GP/hr, XP/hr, profit-per-XP) under a {@link PriceLookup} and
@@ -43,6 +46,22 @@ public class ProfitCalculator
 	 * @return the evaluated profitability
 	 */
 	public ProfitResult evaluate(Recipe rec, PriceLookup prices, PriceConfig cfg, int playerLevel)
+	{
+		return evaluate(rec, prices, cfg, playerLevel, Collections.emptyList());
+	}
+
+	/**
+	 * Evaluates a recipe at a skill level with the given active success modifiers applied.
+	 *
+	 * @param rec         the recipe to evaluate
+	 * @param prices      the price source
+	 * @param cfg         the tax/efficiency config
+	 * @param playerLevel the player's live level in the recipe's primary skill
+	 * @param active      the success modifiers currently in effect
+	 * @return the evaluated profitability
+	 */
+	public ProfitResult evaluate(Recipe rec, PriceLookup prices, PriceConfig cfg, int playerLevel,
+			List<SuccessModifier> active)
 	{
 		boolean stale = false;
 
@@ -65,6 +84,7 @@ public class ProfitCalculator
 				stale = true;
 		}
 
+		double yieldMult = Success.yieldMult(rec, active);
 		long goodGross = 0L;
 		long goodTax = 0L;
 		for (RecipeOutput out : rec.getOutputs())
@@ -77,13 +97,13 @@ public class ProfitCalculator
 				continue;
 			}
 
-			goodGross += sell * (long) out.getQty();
+			goodGross += Math.round(sell * (double) out.getQty() * yieldMult);
 			goodTax += cfg.geTax(id, sell, out.getQty());
 			if (prices.isStale(id))
 				stale = true;
 		}
 
-		double p = rec.getSuccess() == null ? 1.0 : rec.getSuccess().chance(playerLevel);
+		double p = Success.chance(rec, playerLevel, active);
 		long failNet = failureNet(rec, prices, cfg);
 
 		long goodNet = goodGross - goodTax;
