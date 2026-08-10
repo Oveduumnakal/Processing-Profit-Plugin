@@ -1,0 +1,908 @@
+{
+  "251": {
+    "type": "LINEAR_INTERP",
+    "low": 170,
+    "high": -40,
+    "req": 31
+  },
+  "253": {
+    "type": "LINEAR_INTERP",
+    "low": 70,
+    "high": -20,
+    "req": 1
+  },
+  "255": {
+    "type": "LINEAR_INTERP",
+    "low": 999,
+    "high": 999,
+    "req": 1
+  },
+  "257": {
+    "type": "LINEAR_INTERP",
+    "low": -10,
+    "high": 20,
+    "req": 31
+  },
+  "259": {
+    "type": "LINEAR_INTERP",
+    "low": 30,
+    "high": 70,
+    "req": 31
+  },
+  "261": {
+    "type": "LINEAR_INTERP",
+    "low": 20,
+    "high": 100,
+    "req": 1
+  },
+  "263": {
+    "type": "LINEAR_INTERP",
+    "low": 10,
+    "high": 85,
+    "req": 1
+  },
+  "265": {
+    "type": "LINEAR_INTERP",
+    "low": -10,
+    "high": 70,
+    "req": 13
+  },
+  "267": {
+    "type": "LINEAR_INTERP",
+    "low": -50,
+    "high": 30,
+    "req": 31
+  },
+  "269": {
+    "type": "LINEAR_INTERP",
+    "low": -70,
+    "high": 20,
+    "req": 31
+  },
+  "307": {
+    "type": "LINEAR_INTERP",
+    "low": 3,
+    "high": 22,
+    "req": 79
+  },
+  "311": {
+    "type": "LINEAR_INTERP",
+    "low": 170,
+    "high": 255,
+    "req": 35
+  },
+  "315": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "317": {
+    "type": "LINEAR_INTERP",
+    "low": 48,
+    "high": 256,
+    "req": 1
+  },
+  "319": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "321": {
+    "type": "LINEAR_INTERP",
+    "low": 24,
+    "high": 128,
+    "req": 15
+  },
+  "325": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "329": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "331": {
+    "type": "LINEAR_INTERP",
+    "low": 16,
+    "high": 96,
+    "req": 30
+  },
+  "333": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "335": {
+    "type": "LINEAR_INTERP",
+    "low": 32,
+    "high": 192,
+    "req": 20
+  },
+  "339": {
+    "type": "BURN",
+    "stopLevel": 49,
+    "gauntletStopLevel": null
+  },
+  "341": {
+    "type": "LINEAR_INTERP",
+    "low": 4,
+    "high": 55,
+    "req": 23
+  },
+  "347": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "349": {
+    "type": "LINEAR_INTERP",
+    "low": 16,
+    "high": 96,
+    "req": 25
+  },
+  "351": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "353": {
+    "type": "LINEAR_INTERP",
+    "low": 5,
+    "high": 65,
+    "req": 16
+  },
+  "355": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "359": {
+    "type": "LINEAR_INTERP",
+    "low": 225,
+    "high": 324,
+    "req": 1
+  },
+  "361": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "363": {
+    "type": "LINEAR_INTERP",
+    "low": 3,
+    "high": 40,
+    "req": 46
+  },
+  "365": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "371": {
+    "type": "LINEAR_INTERP",
+    "low": 30,
+    "high": 200,
+    "req": 1
+  },
+  "373": {
+    "type": "BURN",
+    "stopLevel": 80,
+    "gauntletStopLevel": 80
+  },
+  "377": {
+    "type": "LINEAR_INTERP",
+    "low": 6,
+    "high": 95,
+    "req": 40
+  },
+  "379": {
+    "type": "BURN",
+    "stopLevel": 74,
+    "gauntletStopLevel": 64
+  },
+  "383": {
+    "type": "LINEAR_INTERP",
+    "low": -60,
+    "high": 140,
+    "req": 1
+  },
+  "385": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": 94
+  },
+  "389": {
+    "type": "LINEAR_INTERP",
+    "low": -10,
+    "high": 20,
+    "req": 1
+  },
+  "391": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "395": {
+    "type": "LINEAR_INTERP",
+    "low": -10,
+    "high": 50,
+    "req": 1
+  },
+  "397": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "401": {
+    "type": "LINEAR_INTERP",
+    "low": 10,
+    "high": 10,
+    "req": 16
+  },
+  "405": {
+    "type": "LINEAR_INTERP",
+    "low": 1,
+    "high": 2,
+    "req": 16
+  },
+  "407": {
+    "type": "LINEAR_INTERP",
+    "low": 3,
+    "high": 7,
+    "req": 16
+  },
+  "444": {
+    "type": "LINEAR_INTERP",
+    "low": -40,
+    "high": 126,
+    "req": 40
+  },
+  "447": {
+    "type": "LINEAR_INTERP",
+    "low": -19,
+    "high": 90,
+    "req": 55
+  },
+  "449": {
+    "type": "LINEAR_INTERP",
+    "low": -90,
+    "high": 50,
+    "req": 70
+  },
+  "451": {
+    "type": "LINEAR_INTERP",
+    "low": -20,
+    "high": 5,
+    "req": 85
+  },
+  "453": {
+    "type": "LINEAR_INTERP",
+    "low": 226,
+    "high": 325,
+    "req": 30
+  },
+  "554": {
+    "type": "LINEAR_INTERP",
+    "low": 110,
+    "high": 253,
+    "req": 30
+  },
+  "555": {
+    "type": "LINEAR_INTERP",
+    "low": 110,
+    "high": 253,
+    "req": 30
+  },
+  "556": {
+    "type": "LINEAR_INTERP",
+    "low": 110,
+    "high": 253,
+    "req": 30
+  },
+  "557": {
+    "type": "LINEAR_INTERP",
+    "low": 110,
+    "high": 253,
+    "req": 30
+  },
+  "558": {
+    "type": "LINEAR_INTERP",
+    "low": 110,
+    "high": 253,
+    "req": 30
+  },
+  "1059": {
+    "type": "LINEAR_INTERP",
+    "low": 5,
+    "high": 5,
+    "req": 16
+  },
+  "1061": {
+    "type": "LINEAR_INTERP",
+    "low": 10,
+    "high": 10,
+    "req": 16
+  },
+  "1523": {
+    "type": "LINEAR_INTERP",
+    "low": 20,
+    "high": 180,
+    "req": 54
+  },
+  "1609": {
+    "type": "LINEAR_INTERP",
+    "low": 128,
+    "high": 250,
+    "req": 1
+  },
+  "1611": {
+    "type": "LINEAR_INTERP",
+    "low": 100,
+    "high": 245,
+    "req": 13
+  },
+  "1613": {
+    "type": "LINEAR_INTERP",
+    "low": 90,
+    "high": 240,
+    "req": 16
+  },
+  "1783": {
+    "type": "LINEAR_INTERP",
+    "low": 107,
+    "high": 77,
+    "req": 15
+  },
+  "1787": {
+    "type": "LINEAR_INTERP",
+    "low": 180,
+    "high": 800,
+    "req": 1
+  },
+  "1789": {
+    "type": "LINEAR_INTERP",
+    "low": 180,
+    "high": 800,
+    "req": 1
+  },
+  "1791": {
+    "type": "LINEAR_INTERP",
+    "low": 180,
+    "high": 800,
+    "req": 1
+  },
+  "1861": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "1865": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "1885": {
+    "type": "LINEAR_INTERP",
+    "low": 118,
+    "high": 492,
+    "req": 1
+  },
+  "1891": {
+    "type": "BURN",
+    "stopLevel": 74,
+    "gauntletStopLevel": null
+  },
+  "1993": {
+    "type": "LINEAR_INTERP",
+    "low": 48,
+    "high": 352,
+    "req": 35
+  },
+  "2003": {
+    "type": "BURN",
+    "stopLevel": 58,
+    "gauntletStopLevel": null
+  },
+  "2011": {
+    "type": "BURN",
+    "stopLevel": 74,
+    "gauntletStopLevel": null
+  },
+  "2140": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "2142": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "2185": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2187": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2191": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2195": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2205": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2209": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2213": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2217": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2253": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2255": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2259": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2277": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2281": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2289": {
+    "type": "BURN",
+    "stopLevel": 68,
+    "gauntletStopLevel": null
+  },
+  "2309": {
+    "type": "BURN",
+    "stopLevel": 38,
+    "gauntletStopLevel": null
+  },
+  "2323": {
+    "type": "BURN",
+    "stopLevel": 63,
+    "gauntletStopLevel": null
+  },
+  "2325": {
+    "type": "BURN",
+    "stopLevel": 45,
+    "gauntletStopLevel": null
+  },
+  "2327": {
+    "type": "BURN",
+    "stopLevel": 54,
+    "gauntletStopLevel": null
+  },
+  "2481": {
+    "type": "LINEAR_INTERP",
+    "low": -30,
+    "high": 60,
+    "req": 34
+  },
+  "2878": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "3000": {
+    "type": "LINEAR_INTERP",
+    "low": -60,
+    "high": 20,
+    "req": 31
+  },
+  "3142": {
+    "type": "LINEAR_INTERP",
+    "low": 5,
+    "high": 160,
+    "req": 65
+  },
+  "3144": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "3211": {
+    "type": "LINEAR_INTERP",
+    "low": 95,
+    "high": 350,
+    "req": 10
+  },
+  "3228": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "3369": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "3371": {
+    "type": "BURN",
+    "stopLevel": 50,
+    "gauntletStopLevel": null
+  },
+  "3373": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "3379": {
+    "type": "LINEAR_INTERP",
+    "low": 10,
+    "high": 80,
+    "req": 28
+  },
+  "3381": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "4438": {
+    "type": "LINEAR_INTERP",
+    "low": 180,
+    "high": 800,
+    "req": 1
+  },
+  "5001": {
+    "type": "LINEAR_INTERP",
+    "low": 10,
+    "high": 80,
+    "req": 38
+  },
+  "5003": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "5352": {
+    "type": "LINEAR_INTERP",
+    "low": 180,
+    "high": 800,
+    "req": 1
+  },
+  "5988": {
+    "type": "BURN",
+    "stopLevel": 54,
+    "gauntletStopLevel": null
+  },
+  "6297": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "6299": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "6701": {
+    "type": "BURN",
+    "stopLevel": 41,
+    "gauntletStopLevel": null
+  },
+  "7078": {
+    "type": "BURN",
+    "stopLevel": 48,
+    "gauntletStopLevel": null
+  },
+  "7082": {
+    "type": "BURN",
+    "stopLevel": 90,
+    "gauntletStopLevel": null
+  },
+  "7084": {
+    "type": "BURN",
+    "stopLevel": 77,
+    "gauntletStopLevel": null
+  },
+  "7170": {
+    "type": "BURN",
+    "stopLevel": 63,
+    "gauntletStopLevel": null
+  },
+  "7178": {
+    "type": "BURN",
+    "stopLevel": 68,
+    "gauntletStopLevel": null
+  },
+  "7188": {
+    "type": "BURN",
+    "stopLevel": 74,
+    "gauntletStopLevel": null
+  },
+  "7198": {
+    "type": "BURN",
+    "stopLevel": 94,
+    "gauntletStopLevel": null
+  },
+  "7208": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "7218": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "7223": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "7521": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "7568": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "7763": {
+    "type": "LINEAR_INTERP",
+    "low": 180,
+    "high": 250,
+    "req": 1
+  },
+  "7767": {
+    "type": "LINEAR_INTERP",
+    "low": 60,
+    "high": 250,
+    "req": 1
+  },
+  "7944": {
+    "type": "LINEAR_INTERP",
+    "low": 48,
+    "high": 90,
+    "req": 62
+  },
+  "7946": {
+    "type": "BURN",
+    "stopLevel": 90,
+    "gauntletStopLevel": 86
+  },
+  "9980": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "9988": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "10010": {
+    "type": "LINEAR_INTERP",
+    "low": 0,
+    "high": 276,
+    "req": 75
+  },
+  "10075": {
+    "type": "LINEAR_INTERP",
+    "low": 52,
+    "high": 252,
+    "req": 40
+  },
+  "10136": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "10138": {
+    "type": "LINEAR_INTERP",
+    "low": 8,
+    "high": 64,
+    "req": 38
+  },
+  "10146": {
+    "type": "LINEAR_INTERP",
+    "low": 16,
+    "high": 288,
+    "req": 47
+  },
+  "10147": {
+    "type": "LINEAR_INTERP",
+    "low": 0,
+    "high": 240,
+    "req": 59
+  },
+  "10148": {
+    "type": "LINEAR_INTERP",
+    "low": 0,
+    "high": 212,
+    "req": 67
+  },
+  "10149": {
+    "type": "LINEAR_INTERP",
+    "low": 52,
+    "high": 360,
+    "req": 29
+  },
+  "10978": {
+    "type": "LINEAR_INTERP",
+    "low": 10,
+    "high": 10,
+    "req": 33
+  },
+  "10981": {
+    "type": "LINEAR_INTERP",
+    "low": 50,
+    "high": 250,
+    "req": 44
+  },
+  "11328": {
+    "type": "LINEAR_INTERP",
+    "low": 32,
+    "high": 192,
+    "req": 48
+  },
+  "11330": {
+    "type": "LINEAR_INTERP",
+    "low": 16,
+    "high": 96,
+    "req": 58
+  },
+  "11332": {
+    "type": "LINEAR_INTERP",
+    "low": 8,
+    "high": 64,
+    "req": 70
+  },
+  "11936": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "13431": {
+    "type": "LINEAR_INTERP",
+    "low": 3,
+    "high": 36,
+    "req": 82
+  },
+  "13441": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": 97
+  },
+  "19662": {
+    "type": "BURN",
+    "stopLevel": 84,
+    "gauntletStopLevel": null
+  },
+  "21028": {
+    "type": "LINEAR_INTERP",
+    "low": 178,
+    "high": 267,
+    "req": 61
+  },
+  "21690": {
+    "type": "BURN",
+    "stopLevel": 89,
+    "gauntletStopLevel": null
+  },
+  "22795": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "28834": {
+    "type": "LINEAR_INTERP",
+    "low": 1,
+    "high": 212,
+    "req": 79
+  },
+  "29128": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "29131": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "29134": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "29137": {
+    "type": "BURN",
+    "stopLevel": 92,
+    "gauntletStopLevel": null
+  },
+  "29140": {
+    "type": "BURN",
+    "stopLevel": 95,
+    "gauntletStopLevel": null
+  },
+  "29143": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "29146": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "29149": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  },
+  "29152": {
+    "type": "BURN",
+    "stopLevel": 80,
+    "gauntletStopLevel": 80
+  },
+  "30773": {
+    "type": "LINEAR_INTERP",
+    "low": 13,
+    "high": 100,
+    "req": 82
+  },
+  "32357": {
+    "type": "LINEAR_INTERP",
+    "low": 50,
+    "high": 255,
+    "req": 1
+  },
+  "32360": {
+    "type": "LINEAR_INTERP",
+    "low": 50,
+    "high": 255,
+    "req": 1
+  },
+  "32362": {
+    "type": "LINEAR_INTERP",
+    "low": 50,
+    "high": 255,
+    "req": 1
+  },
+  "33109": {
+    "type": "BURN",
+    "stopLevel": 100,
+    "gauntletStopLevel": null
+  }
+}
