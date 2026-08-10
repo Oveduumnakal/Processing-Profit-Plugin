@@ -100,6 +100,18 @@ public class RecipeRepository
 	}
 
 	/**
+	 * Replaces the recipe list directly and rebuilds the indexes, bypassing resource loading and
+	 * success-data merging. Package-visible for testing against hand-built recipes.
+	 *
+	 * @param recipes the recipes to hold
+	 */
+	void setAll(List<Recipe> recipes)
+	{
+		all = recipes == null ? Collections.emptyList() : recipes;
+		index();
+	}
+
+	/**
 	 * Rebuilds the by-output and by-skill indexes from the current recipe list.
 	 */
 	private void index()
