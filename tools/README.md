@@ -39,11 +39,32 @@ defensively; `experience` may be non-numeric (`"Varies"`) and becomes `null`.
 - Before each plugin release (new content, renamed items, changed recipes).
 - Wired into CI so the bundled snapshot stays current (see issue #4).
 
-## Success-rate data
+## `extract_success.py` → `src/main/resources/success_params.json`
 
-`scrape_success.py` (issue #2) and the curated `success_modifiers.json` /
-failure-outputs list (issue #3) produce the success-math inputs, merged into the
-recipes at build time. Documented here as they land.
+Scrapes level-based success models, keyed by item id, merged into the recipes at
+build time. Reuses the extractor's helpers (`api`, `wikitext_batch`, `parse_recipe`,
+`load_name_index`, …). Standard library only.
+
+```sh
+python3 tools/extract_success.py            # ~10s
+python3 tools/extract_success.py -o out.json
+```
+
+- **`LINEAR_INTERP {low, high, req}`** from every page transcluding
+  `{{Skilling success chart}}` (semi-precious gem cuts, etc.). Verified: opal
+  `low=128` → `129/256 = 0.5039` at level 1.
+- **`BURN {stopLevel, gauntletStopLevel}`** from the `Cooking/Burn level` tables.
+  A header-aware wikitable parser reads the **Range** column as the base stop
+  level and the **Gauntlets Default** column as the gauntlet stop level. A dashed
+  base (food still burns at 99 on a plain range, e.g. shark) is modeled as stop
+  level `100`. Hosidius/cape are runtime modifiers (see `success_modifiers.json`),
+  not scraped here; `reqLevel` is filled from the recipe at merge.
+
+BURN overrides LINEAR_INTERP on the same id (a cooked fish is never a gem cut),
+which also suppresses stray fishing/gathering chart entries landing on food ids.
+
+The curated `success_modifiers.json` + failure-outputs list (issue #3) are the
+small hand-maintained companion; recipes with no scraped model default to 100%.
 
 ## Licensing / etiquette
 
