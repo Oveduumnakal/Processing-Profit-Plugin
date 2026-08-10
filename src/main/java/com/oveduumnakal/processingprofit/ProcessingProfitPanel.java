@@ -38,15 +38,20 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollBar;
+import javax.swing.JScrollPane;
+import javax.swing.ScrollPaneConstants;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
+import javax.swing.plaf.ScrollBarUI;
 
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.materialtabs.MaterialTab;
 import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
+import net.runelite.client.ui.laf.RuneLiteScrollBarUI;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
@@ -91,10 +96,10 @@ public class ProcessingProfitPanel extends PluginPanel
 
 		MaterialTabGroup tabGroup = new MaterialTabGroup(display);
 		tabGroup.setBorder(new EmptyBorder(8, 0, 6, 0));
-		MaterialTab browse = new MaterialTab("Browse", tabGroup, wrap(browseRows));
-		MaterialTab onHand = new MaterialTab("On-hand", tabGroup, wrap(onHandRows));
-		MaterialTab watchlist = new MaterialTab("Watch", tabGroup, wrap(watchlistRows));
-		MaterialTab shopping = new MaterialTab("Shop", tabGroup, wrap(shoppingRows));
+		MaterialTab browse = new MaterialTab("Browse", tabGroup, scroll(browseRows));
+		MaterialTab onHand = new MaterialTab("On-hand", tabGroup, scroll(onHandRows));
+		MaterialTab watchlist = new MaterialTab("Watch", tabGroup, scroll(watchlistRows));
+		MaterialTab shopping = new MaterialTab("Shop", tabGroup, scroll(shoppingRows));
 		tabGroup.addTab(browse);
 		tabGroup.addTab(onHand);
 		tabGroup.addTab(watchlist);
@@ -162,12 +167,22 @@ public class ProcessingProfitPanel extends PluginPanel
 		return panel;
 	}
 
-	private static JPanel wrap(JPanel rows)
+	private static JScrollPane scroll(JPanel rows)
 	{
 		JPanel wrap = new JPanel(new BorderLayout());
 		wrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		wrap.add(rows, BorderLayout.NORTH);
-		return wrap;
+
+		JScrollPane scroll = new JScrollPane(wrap,
+				ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+				ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+		scroll.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		scroll.setBorder(BorderFactory.createEmptyBorder());
+
+		JScrollBar vertical = scroll.getVerticalScrollBar();
+		vertical.setUI((ScrollBarUI) RuneLiteScrollBarUI.createUI(vertical));
+		vertical.setUnitIncrement(16);
+		return scroll;
 	}
 
 	/**

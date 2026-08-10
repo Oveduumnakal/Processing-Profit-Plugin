@@ -96,13 +96,11 @@ public class ProcessingProfitPlugin extends Plugin
 	@Inject
 	private GePriceLookup prices;
 
-	@Inject
-	private ProcessingProfitPanel panel;
-
 	private final RecipeRepository recipes = new RecipeRepository();
 	private final ProfitCalculator calculator = new ProfitCalculator();
 	private final SourcingEngine sourcing = new SourcingEngine(calculator);
 
+	private ProcessingProfitPanel panel;
 	private NavigationButton navButton;
 	private ScheduledFuture<?> refreshFuture;
 	private volatile boolean loaded;
@@ -110,6 +108,7 @@ public class ProcessingProfitPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		panel = new ProcessingProfitPanel();
 		panel.setModeListener(mode -> refreshOnHand());
 		navButton = NavigationButton.builder()
 				.tooltip("Processing Profit")
