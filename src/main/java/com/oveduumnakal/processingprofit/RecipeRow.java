@@ -38,8 +38,11 @@ public class RecipeRow
 {
 	int itemId;
 	String product;
+	String skill;
 	long profitEach;
+	double roi;
 	long gpPerHour;
+	double xpPerHour;
 	boolean throughputKnown;
 	Double successPercent;
 	int levelReq;

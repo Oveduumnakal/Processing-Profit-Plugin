@@ -72,7 +72,6 @@ import net.runelite.client.ui.NavigationButton;
 )
 public class ProcessingProfitPlugin extends Plugin
 {
-	private static final int MAX_ROWS = 100;
 	private static final int BROWSE_LEVEL = 99;
 
 	@Inject
@@ -186,8 +185,7 @@ public class ProcessingProfitPlugin extends Plugin
 			rows.add(toRow(recipe, result, -1));
 		}
 
-		rows.sort((a, b) -> Long.compare(b.getProfitEach(), a.getProfitEach()));
-		panel.setBrowseRows(cap(rows));
+		panel.setBrowseRows(rows);
 	}
 
 	private void refreshOnHand()
@@ -229,10 +227,7 @@ public class ProcessingProfitPlugin extends Plugin
 			rows.add(toRow(recipe, profit, result.getMakeableNow()));
 		}
 
-		rows.sort((a, b) -> Long.compare(
-				(long) b.getMakeableNow() * b.getProfitEach(),
-				(long) a.getMakeableNow() * a.getProfitEach()));
-		panel.setOnHandRows(cap(rows));
+		panel.setOnHandRows(rows);
 	}
 
 	private Map<Integer, Integer> readHeld()
@@ -274,18 +269,14 @@ public class ProcessingProfitPlugin extends Plugin
 		RecipeOutput primary = recipe.getOutputs().get(0);
 		SkillReq skill = recipe.primarySkill();
 		int levelReq = skill == null ? 1 : skill.getLevel();
+		String skillName = skill == null ? "" : skill.getSkill();
 		SuccessModel model = recipe.getSuccess();
 		Double success = model == null || model.getType() == SuccessType.ALWAYS
 				? null : result.getSuccessChance();
 		long volume = prices.volume(primary.getItemId());
-		return new RecipeRow(primary.getItemId(), primary.getName(), result.getProfitEach(),
-				result.getGpPerHour(), result.isThroughputKnown(), success, levelReq, volume, makeable,
-				result.isStalePrices());
-	}
-
-	private static List<RecipeRow> cap(List<RecipeRow> rows)
-	{
-		return rows.size() > MAX_ROWS ? new ArrayList<>(rows.subList(0, MAX_ROWS)) : rows;
+		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, result.getProfitEach(),
+				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
+				success, levelReq, volume, makeable, result.isStalePrices());
 	}
 
 	private PriceConfig priceConfig()
