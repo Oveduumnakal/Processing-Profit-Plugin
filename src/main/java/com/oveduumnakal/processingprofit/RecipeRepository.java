@@ -54,6 +54,7 @@ public class RecipeRepository
 	private final Map<Integer, List<Recipe>> byOutput = new HashMap<>();
 	private final Map<String, List<Recipe>> bySkill = new HashMap<>();
 	private List<Recipe> all = Collections.emptyList();
+	private List<SuccessModifier> modifiers = Collections.emptyList();
 
 	/**
 	 * Loads the bundled {@code recipes.json} from the classpath and rebuilds the indexes.
@@ -92,6 +93,9 @@ public class RecipeRepository
 			all = Collections.emptyList();
 		}
 
+		SuccessData successData = SuccessData.bundled();
+		all = successData.enrichAll(all);
+		modifiers = successData.modifiers();
 		index();
 	}
 
@@ -144,5 +148,15 @@ public class RecipeRepository
 	public List<Recipe> forSkill(String skill)
 	{
 		return bySkill.getOrDefault(skill, Collections.emptyList());
+	}
+
+	/**
+	 * The success-modifier registry loaded alongside the recipes (which are active is a runtime choice).
+	 *
+	 * @return the loaded modifiers, or an empty list before {@link #load()}
+	 */
+	public List<SuccessModifier> modifiers()
+	{
+		return modifiers;
 	}
 }
