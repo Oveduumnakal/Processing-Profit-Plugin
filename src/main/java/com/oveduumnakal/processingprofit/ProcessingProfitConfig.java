@@ -44,30 +44,47 @@ public interface ProcessingProfitConfig extends Config
 	)
 	String calculationSection = "calculation";
 
-	/** How the tooltip and sidebar present processing opportunities. */
+	/** How the sidebar presents processing opportunities. */
 	@ConfigSection(
 		name = "Display",
-		description = "What the tooltip and sidebar show.",
+		description = "What the sidebar shows and how it is filtered.",
 		position = 1
 	)
 	String displaySection = "display";
 
 	/**
-	 * Whether unlisted ingredients are assumed bought at their instant-buy price. When off, an unlisted
-	 * ingredient is treated as gathered (cost 0). Per-item overrides come later.
+	 * The default sourcing assumption profits are computed under. The sidebar's selector overrides this
+	 * for the session.
 	 *
-	 * @return true to value unlisted ingredients at buy price
+	 * @return the default sourcing mode
 	 */
 	@ConfigItem(
-		keyName = "assumeIngredientsBought",
-		name = "Assume ingredients bought",
-		description = "Value unlisted ingredients at their buy price. Off treats them as gathered (free).",
+		keyName = "sourcingMode",
+		name = "Sourcing mode",
+		description = "On-hand (from your stock), Buy to order (all bought), or Hybrid (held + shortfall).",
 		section = calculationSection,
 		position = 0
 	)
-	default boolean assumeIngredientsBought()
+	default SourcingMode sourcingMode()
 	{
-		return true;
+		return SourcingMode.ON_HAND;
+	}
+
+	/**
+	 * The valuation lens. Ironman (no-GE) is a v2 placeholder that currently behaves as GE market.
+	 *
+	 * @return the valuation lens
+	 */
+	@ConfigItem(
+		keyName = "valuationLens",
+		name = "Valuation",
+		description = "GE market prices, or the Ironman (no-GE) lens (v2 placeholder).",
+		section = calculationSection,
+		position = 1
+	)
+	default ValuationLens valuationLens()
+	{
+		return ValuationLens.GE_MARKET;
 	}
 
 	/**
@@ -80,7 +97,7 @@ public interface ProcessingProfitConfig extends Config
 		name = "Apply 2% GE tax",
 		description = "Subtract the Grand Exchange sales tax from product value.",
 		section = calculationSection,
-		position = 1
+		position = 2
 	)
 	default boolean applyGeTax()
 	{
@@ -88,18 +105,87 @@ public interface ProcessingProfitConfig extends Config
 	}
 
 	/**
-	 * Minimum profit, in gp, a process must clear before it is shown in the sidebar or tooltip.
+	 * The efficiency percentage applied to theoretical action throughput for GP/hr and XP/hr, covering
+	 * banking and travel overhead.
+	 *
+	 * @return the efficiency percentage (1&ndash;100)
+	 */
+	@ConfigItem(
+		keyName = "efficiency",
+		name = "Efficiency %",
+		description = "Fraction of theoretical actions/hr actually achieved (banking, travel overhead).",
+		section = calculationSection,
+		position = 3
+	)
+	default int efficiency()
+	{
+		return 90;
+	}
+
+	/**
+	 * How often live prices are refreshed from the wiki, in seconds.
+	 *
+	 * @return the refresh interval in seconds
+	 */
+	@ConfigItem(
+		keyName = "refreshSeconds",
+		name = "Price refresh (s)",
+		description = "How often live prices are refreshed from the OSRS Wiki (5-minute averages).",
+		section = calculationSection,
+		position = 4
+	)
+	default int refreshSeconds()
+	{
+		return 60;
+	}
+
+	/**
+	 * Minimum profit per action, in gp, a recipe must clear to be shown.
 	 *
 	 * @return the minimum profit threshold in gp
 	 */
 	@ConfigItem(
 		keyName = "minProfit",
-		name = "Minimum profit (gp)",
-		description = "Hide processes whose profit is below this many gp.",
-		section = calculationSection,
-		position = 2
+		name = "Min profit (gp)",
+		description = "Hide recipes whose profit per action is below this many gp.",
+		section = displaySection,
+		position = 0
 	)
 	default int minProfit()
+	{
+		return 0;
+	}
+
+	/**
+	 * Minimum GP/hr a recipe must clear to be shown (recipes with no tick data are not filtered out).
+	 *
+	 * @return the minimum GP/hr threshold
+	 */
+	@ConfigItem(
+		keyName = "minGpPerHour",
+		name = "Min GP/hr",
+		description = "Hide recipes whose GP/hr is below this. Recipes with no tick data are kept.",
+		section = displaySection,
+		position = 1
+	)
+	default int minGpPerHour()
+	{
+		return 0;
+	}
+
+	/**
+	 * Minimum GE trading volume a product must have to be shown, filtering illiquid traps.
+	 *
+	 * @return the minimum volume threshold
+	 */
+	@ConfigItem(
+		keyName = "minVolume",
+		name = "Min volume",
+		description = "Hide products whose GE trading volume is below this.",
+		section = displaySection,
+		position = 2
+	)
+	default int minVolume()
 	{
 		return 0;
 	}
@@ -115,7 +201,7 @@ public interface ProcessingProfitConfig extends Config
 		name = "Show hover tooltip",
 		description = "Show the best-chain profit tooltip when hovering an item with alt held.",
 		section = displaySection,
-		position = 0
+		position = 3
 	)
 	default boolean showTooltip()
 	{
