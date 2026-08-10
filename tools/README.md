@@ -37,7 +37,15 @@ defensively; `experience` may be non-numeric (`"Varies"`) and becomes `null`.
 ## When to re-run
 
 - Before each plugin release (new content, renamed items, changed recipes).
-- Wired into CI so the bundled snapshot stays current (see issue #4).
+- **CI:** `.github/workflows/refresh-data.yml` regenerates both snapshots and
+  opens a PR — manually (`workflow_dispatch`) or on a monthly schedule. It is
+  deliberately **not** part of every build (that would hammer the wiki and make
+  CI network-dependent). Review the PR diff before merging.
+- The regular Build workflow validates the committed snapshots **offline** via
+  `./gradlew validateDataSnapshots` (wired into `check`), failing the build if any
+  snapshot is missing, empty, or malformed.
+
+You can also run the validator locally: `./gradlew validateDataSnapshots`.
 
 ## `extract_success.py` → `src/main/resources/success_params.json`
 

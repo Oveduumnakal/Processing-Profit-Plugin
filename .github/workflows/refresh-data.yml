@@ -1,0 +1,62 @@
+name: Refresh data snapshots
+
+# Regenerates the bundled recipe + success-rate snapshots from the OSRS Wiki and
+# opens a PR with the changes. Recipes change rarely, so this is NOT run on every
+# build (that would hammer the wiki and make CI depend on the network). Run it
+# manually before a release, or let the monthly schedule pick up new content.
+# The regular Build workflow validates the committed snapshots offline via
+# ./gradlew validateDataSnapshots.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 1 * *'  # 06:00 UTC on the 1st of each month
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 11
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Regenerate snapshots
+        run: |
+          python3 tools/extract_recipes.py
+          python3 tools/extract_success.py
+
+      - name: Validate regenerated snapshots
+        run: ./gradlew validateDataSnapshots
+
+      - name: Open a PR if anything changed
+        run: |
+          if git diff --quiet -- src/main/resources; then
+            echo "No snapshot changes — nothing to do."
+            exit 0
+          fi
+          DATE=$(date -u +%Y-%m-%d)
+          BRANCH="data/refresh-${DATE}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add src/main/resources/recipes.json src/main/resources/success_params.json
+          git commit -m "Refresh bundled recipe/success data (${DATE})"
+          git push -u origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" \
+            --title "Refresh bundled recipe/success data (${DATE})" \
+            --body "Automated regeneration of \`recipes.json\` + \`success_params.json\` from the OSRS Wiki. Validated by \`./gradlew validateDataSnapshots\`. Review the diff before merging."
