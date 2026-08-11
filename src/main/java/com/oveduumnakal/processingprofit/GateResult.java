@@ -27,31 +27,17 @@ package com.oveduumnakal.processingprofit;
 import lombok.Value;
 
 /**
- * A display row for the recipe table: the product name and id, per-action profit, GP/hr (with a
- * {@code throughputKnown} flag so a recipe with no tick data shows "n/a"), success percentage
- * ({@code null} for always-100% recipes, shown as "&mdash;"), the level requirement, GE volume, the
- * number makeable now (used by the On-hand and Shopping tabs; {@code -1} when not applicable), a
- * staleness flag, whether the recipe is {@code locked} for the player (skill level or quest gated) with
- * a short {@code lockReason}, and the source {@link Recipe} so a click can rebuild the full detail
- * breakdown. A view model built by the plugin and rendered by {@link ProcessingProfitPanel}.
+ * Whether a recipe is gated out for the current player: {@code locked} is {@code true} when a required
+ * skill level or an unfinished quest blocks it, and {@code reason} is a short human-readable note (e.g.
+ * "Cooking 80 (+5)" or "Quest: Recipe for Disaster") shown when the row is greyed. Unlocked results
+ * carry a {@code null} reason.
  */
 @Value
-public class RecipeRow
+public class GateResult
 {
-	int itemId;
-	String product;
-	String skill;
-	long profitEach;
-	double roi;
-	long gpPerHour;
-	double xpPerHour;
-	boolean throughputKnown;
-	Double successPercent;
-	int levelReq;
-	long volume;
-	int makeableNow;
-	boolean stale;
 	boolean locked;
-	String lockReason;
-	Recipe recipe;
+	String reason;
+
+	/** A shared unlocked result. */
+	public static final GateResult OPEN = new GateResult(false, null);
 }
