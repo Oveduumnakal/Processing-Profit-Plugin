@@ -82,6 +82,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static final int MAX_DISPLAY = 100;
 	private static final Color STALE_DOT = new Color(0xF0, 0xA3, 0x30);
 	private static final Color STAR_ON = new Color(0xF0, 0xC0, 0x40);
+	private static final Color LOCKED_FG = new Color(0x80, 0x80, 0x80);
 	private static final String STALE_TOOLTIP =
 			"Price may be stale (from the 1h fallback or a low-volume item)";
 	private static final String[] MODE_LABELS = {"On-hand", "Buy to order", "Hybrid"};
@@ -90,11 +91,15 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static final String[] SORT_LABELS =
 			{"Profit/ea", "GP/hr", "XP/hr", "ROI %", "Success %", "Level", "Volume", "Makeable"};
 	private static final String ALL_SKILLS = "All skills";
+	private static final int GATING_HIDE = 0;
+	private static final int GATING_GREY = 1;
 
 	private final JComboBox<String> modeSelector = new JComboBox<>(MODE_LABELS);
 	private final JComboBox<String> valuationSelector =
 			new JComboBox<>(new String[]{"GE market", "Ironman (v2)"});
 	private final JComboBox<String> skillSelector = new JComboBox<>(new String[]{ALL_SKILLS});
+	private final JComboBox<String> gatingSelector =
+			new JComboBox<>(new String[]{"Hide locked", "Grey locked", "Show all"});
 	private final JComboBox<String> sortSelector = new JComboBox<>(SORT_LABELS);
 	private final JComboBox<String> densitySelector = new JComboBox<>(new String[]{"Cards", "Compact"});
 	private final JTextField searchField = new JTextField();
@@ -172,6 +177,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		modeSelector.addActionListener(e -> fireModeChanged());
 		sortSelector.addActionListener(e -> renderAll());
 		densitySelector.addActionListener(e -> renderAll());
+		gatingSelector.addActionListener(e -> renderAll());
 		skillSelector.addActionListener(e ->
 		{
 			if (!rebuildingSkills)
@@ -208,6 +214,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		styleCombo(modeSelector);
 		styleCombo(valuationSelector);
 		styleCombo(skillSelector);
+		styleCombo(gatingSelector);
 		styleCombo(sortSelector);
 		styleCombo(densitySelector);
 		styleSearch(searchField);
@@ -223,6 +230,7 @@ public class ProcessingProfitPanel extends PluginPanel
 
 		header.add(labelledRow("Search", searchField));
 		header.add(labelledRow("Skill", skillSelector));
+		header.add(labelledRow("Gating", gatingSelector));
 		header.add(labelledRow("Sort", sortSelector));
 		header.add(labelledRow("View", densitySelector));
 
@@ -673,10 +681,14 @@ public class ProcessingProfitPanel extends PluginPanel
 		String skill = (String) skillSelector.getSelectedItem();
 		boolean allSkills = skill == null || ALL_SKILLS.equals(skill);
 
+		boolean hideLocked = gatingSelector.getSelectedIndex() == GATING_HIDE;
 		List<RecipeRow> out = new ArrayList<>();
 		for (RecipeRow row : data)
 		{
 			if (!allSkills && !skill.equalsIgnoreCase(row.getSkill()))
+				continue;
+
+			if (hideLocked && row.isLocked())
 				continue;
 
 			if (!query.isEmpty() && !row.getProduct().toLowerCase().contains(query))
@@ -782,7 +794,10 @@ public class ProcessingProfitPanel extends PluginPanel
 				fireSelection(row);
 			}
 		});
-		if (row.isStale())
+		boolean greyed = row.isLocked() && gatingSelector.getSelectedIndex() == GATING_GREY;
+		if (row.isLocked() && row.getLockReason() != null)
+			panel.setToolTipText("Locked — " + row.getLockReason());
+		else if (row.isStale())
 			panel.setToolTipText(STALE_TOOLTIP);
 
 		if (row.getRecipe() != null)
@@ -790,7 +805,7 @@ public class ProcessingProfitPanel extends PluginPanel
 
 		JLabel name = new JLabel(row.getProduct());
 		name.setFont(FontManager.getRunescapeSmallFont());
-		name.setForeground(Color.WHITE);
+		name.setForeground(greyed ? LOCKED_FG : Color.WHITE);
 
 		JLabel profit = new JLabel(signed(row.getProfitEach()));
 		profit.setFont(FontManager.getRunescapeSmallFont());
@@ -847,6 +862,12 @@ public class ProcessingProfitPanel extends PluginPanel
 		{
 			sb.append("  x");
 			sb.append(row.getMakeableNow());
+		}
+
+		if (row.isLocked() && row.getLockReason() != null)
+		{
+			sb.append("  · locked: ");
+			sb.append(row.getLockReason());
 		}
 
 		return sb.toString();
@@ -934,6 +955,9 @@ public class ProcessingProfitPanel extends PluginPanel
 		content.add(section("Break-even buy price", breakEvenLines(d)));
 		if (d.isStale())
 			content.add(section("Note", Collections.singletonList(STALE_TOOLTIP)));
+
+		if (detailRow != null && detailRow.isLocked() && detailRow.getLockReason() != null)
+			content.add(section("Locked", Collections.singletonList(detailRow.getLockReason())));
 
 		content.add(watchlistButton());
 		content.add(shoppingActions());

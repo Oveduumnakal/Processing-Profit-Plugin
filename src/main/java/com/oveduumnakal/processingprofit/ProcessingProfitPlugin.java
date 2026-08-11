@@ -31,6 +31,7 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +50,12 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.Quest;
+import net.runelite.api.QuestState;
+import net.runelite.api.Skill;
+import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.events.StatChanged;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -64,7 +70,9 @@ import net.runelite.client.ui.NavigationButton;
  * Entry point: loads the bundled recipe catalog, keeps live GE prices fresh, and drives the sidebar. On
  * start it adds a navigation button opening {@link ProcessingProfitPanel}, loads recipes off-thread,
  * refreshes prices on an interval, and rebuilds the Browse (all conversions) and On-hand (from current
- * stock) tabs. Browse is computed at max level for now; live levels and gating land in a later issue.
+ * stock) tabs. Profit and success math are read at the player's live skill levels (falling back to max
+ * when logged out), and each row carries its skill/quest {@link GateResult} so the panel can hide or
+ * grey recipes the player cannot yet do.
  */
 @Slf4j
 @PluginDescriptor(
@@ -109,6 +117,9 @@ public class ProcessingProfitPlugin extends Plugin
 	private final List<ShoppingRequest> shoppingSelection = new ArrayList<>();
 	private volatile Watchlist watchlist = new Watchlist();
 	private volatile Set<String> pinnedSnapshot = Collections.emptySet();
+	private volatile Map<String, Integer> liveLevels = Collections.emptyMap();
+	private volatile Set<String> completedQuests = Collections.emptySet();
+	private volatile Set<String> knownQuests = Collections.emptySet();
 
 	private ProcessingProfitPanel panel;
 	private NavigationButton navButton;
@@ -190,6 +201,93 @@ public class ProcessingProfitPlugin extends Plugin
 		}
 	}
 
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		GameState state = event.getGameState();
+		if (state == GameState.LOGGED_IN)
+		{
+			snapshotLevels();
+			snapshotQuests();
+			rebuildRecipeTabs();
+		}
+		else if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
+		{
+			liveLevels = Collections.emptyMap();
+			completedQuests = Collections.emptySet();
+			knownQuests = Collections.emptySet();
+			rebuildRecipeTabs();
+		}
+	}
+
+	@Subscribe
+	public void onStatChanged(StatChanged event)
+	{
+		Skill skill = event.getSkill();
+		if (skill == null)
+			return;
+
+		Integer prev = liveLevels.get(skill.getName());
+		if (prev != null && prev == event.getLevel())
+			return;
+
+		snapshotLevels();
+		rebuildRecipeTabs();
+	}
+
+	/**
+	 * Snapshots the player's real skill levels into a volatile map keyed by skill name. Must run on the
+	 * client thread (called from client-thread events).
+	 */
+	private void snapshotLevels()
+	{
+		Map<String, Integer> levels = new HashMap<>();
+		for (Skill skill : Skill.values())
+			levels.put(skill.getName(), client.getRealSkillLevel(skill));
+
+		liveLevels = levels;
+	}
+
+	/**
+	 * Snapshots which quests are finished (and the set of all recognised quest names, so unrecognised
+	 * recipe requirement strings never hide a recipe). Must run on the client thread.
+	 */
+	private void snapshotQuests()
+	{
+		Set<String> done = new HashSet<>();
+		Set<String> known = new HashSet<>();
+		for (Quest quest : Quest.values())
+		{
+			String name = quest.getName().toLowerCase();
+			known.add(name);
+			try
+			{
+				if (quest.getState(client) == QuestState.FINISHED)
+					done.add(name);
+			}
+			catch (RuntimeException e)
+			{
+				// some quests can throw before their varbits load; treat as not-finished
+			}
+		}
+
+		completedQuests = done;
+		knownQuests = known;
+	}
+
+	private void rebuildRecipeTabs()
+	{
+		if (!loaded)
+			return;
+
+		executor.execute(() ->
+		{
+			buildBrowse();
+			buildWatchlist();
+		});
+		refreshOnHand();
+	}
+
 	private void buildBrowse()
 	{
 		if (!loaded)
@@ -203,7 +301,7 @@ public class ProcessingProfitPlugin extends Plugin
 			if (outId == null)
 				continue;
 
-			ProfitResult result = calculator.evaluate(recipe, prices, cfg, BROWSE_LEVEL,
+			ProfitResult result = calculator.evaluate(recipe, prices, cfg, primaryLevel(recipe),
 					Collections.emptyList());
 			if (!passesFilters(result, outId))
 				continue;
@@ -242,13 +340,14 @@ public class ProcessingProfitPlugin extends Plugin
 			if (outId == null)
 				continue;
 
-			SourcingResult result = sourcing.evaluate(recipe, prices, cfg, BROWSE_LEVEL,
+			int level = primaryLevel(recipe);
+			SourcingResult result = sourcing.evaluate(recipe, prices, cfg, level,
 					Collections.emptyList(), held, SourcingMode.ON_HAND,
 					SourcingEngine.DEFAULT_HYBRID_TARGET);
 			if (result.getMakeableNow() <= 0 || result.getProfitEach() < config.minProfit())
 				continue;
 
-			ProfitResult profit = calculator.evaluate(recipe, prices, cfg, BROWSE_LEVEL,
+			ProfitResult profit = calculator.evaluate(recipe, prices, cfg, level,
 					Collections.emptyList());
 			rows.add(toRow(recipe, profit, result.getMakeableNow()));
 		}
@@ -299,7 +398,7 @@ public class ProcessingProfitPlugin extends Plugin
 		executor.execute(() ->
 		{
 			PriceConfig cfg = priceConfig();
-			RecipeDetail detail = DetailBuilder.build(recipe, prices, cfg, BROWSE_LEVEL,
+			RecipeDetail detail = DetailBuilder.build(recipe, prices, cfg, primaryLevel(recipe),
 					Collections.emptyList(), calculator);
 			panel.showDetail(detail);
 		});
@@ -369,7 +468,7 @@ public class ProcessingProfitPlugin extends Plugin
 				if (recipe == null || recipe.primaryOutputId() == null)
 					continue;
 
-				ProfitResult result = calculator.evaluate(recipe, prices, cfg, BROWSE_LEVEL,
+				ProfitResult result = calculator.evaluate(recipe, prices, cfg, primaryLevel(recipe),
 						Collections.emptyList());
 				rows.add(toRow(recipe, result, -1));
 			}
@@ -414,14 +513,14 @@ public class ProcessingProfitPlugin extends Plugin
 		}
 
 		PriceConfig cfg = priceConfig();
-		ChainValuator valuator = new ChainValuator(recipes, prices, cfg, s -> BROWSE_LEVEL,
+		ChainValuator valuator = new ChainValuator(recipes, prices, cfg, this::levelFor,
 				Collections.emptyList());
 		ToIntFunction<Integer> buyLimit = id ->
 		{
 			ItemMapping m = prices.mapping(id);
 			return m == null ? 0 : m.getLimit();
 		};
-		ShoppingListBuilder builder = new ShoppingListBuilder(valuator, prices, s -> BROWSE_LEVEL,
+		ShoppingListBuilder builder = new ShoppingListBuilder(valuator, prices, this::levelFor,
 				Collections.emptyList(), buyLimit);
 		ShoppingList list = builder.build(requests, held);
 		panel.setShoppingList(list, summary);
@@ -437,9 +536,37 @@ public class ProcessingProfitPlugin extends Plugin
 		Double success = model == null || model.getType() == SuccessType.ALWAYS
 				? null : result.getSuccessChance();
 		long volume = prices.volume(primary.getItemId());
+		GateResult gate = gateFor(recipe);
 		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, result.getProfitEach(),
 				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
-				success, levelReq, volume, makeable, result.isStalePrices(), recipe);
+				success, levelReq, volume, makeable, result.isStalePrices(), gate.isLocked(),
+				gate.getReason(), recipe);
+	}
+
+	private int levelFor(String skill)
+	{
+		Integer level = liveLevels.get(skill);
+		return level != null ? level : BROWSE_LEVEL;
+	}
+
+	private int primaryLevel(Recipe recipe)
+	{
+		SkillReq skill = recipe.primarySkill();
+		return skill == null ? BROWSE_LEVEL : levelFor(skill.getSkill());
+	}
+
+	private boolean questSatisfied(String quest)
+	{
+		if (quest == null || quest.isEmpty())
+			return true;
+
+		String key = quest.toLowerCase();
+		return !knownQuests.contains(key) || completedQuests.contains(key);
+	}
+
+	private GateResult gateFor(Recipe recipe)
+	{
+		return Gating.evaluate(recipe, liveLevels, this::questSatisfied, !liveLevels.isEmpty());
 	}
 
 	private PriceConfig priceConfig()
