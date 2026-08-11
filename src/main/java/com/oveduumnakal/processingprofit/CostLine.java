@@ -27,28 +27,15 @@ package com.oveduumnakal.processingprofit;
 import lombok.Value;
 
 /**
- * A display row for the recipe table: the product name and id, per-action profit, GP/hr (with a
- * {@code throughputKnown} flag so a recipe with no tick data shows "n/a"), success percentage
- * ({@code null} for always-100% recipes, shown as "&mdash;"), the level requirement, GE volume, the
- * number makeable now (used by the On-hand and Shopping tabs; {@code -1} when not applicable), a
- * staleness flag, and the source {@link Recipe} so a click can rebuild the full detail breakdown. A view
- * model built by the plugin and rendered by {@link ProcessingProfitPanel}.
+ * One line of a {@link RecipeDetail} cost or break-even table: the item {@code label}, the {@code qty},
+ * the per-unit price and the line {@code total}. A {@code unitPrice} or {@code total} of
+ * {@link PriceLookup#UNKNOWN} means the price did not resolve and the view renders it as "?".
  */
 @Value
-public class RecipeRow
+public class CostLine
 {
-	int itemId;
-	String product;
-	String skill;
-	long profitEach;
-	double roi;
-	long gpPerHour;
-	double xpPerHour;
-	boolean throughputKnown;
-	Double successPercent;
-	int levelReq;
-	long volume;
-	int makeableNow;
-	boolean stale;
-	Recipe recipe;
+	String label;
+	int qty;
+	long unitPrice;
+	long total;
 }
