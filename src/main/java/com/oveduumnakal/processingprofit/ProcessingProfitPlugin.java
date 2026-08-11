@@ -33,6 +33,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -141,11 +142,7 @@ public class ProcessingProfitPlugin extends Plugin
 	protected void startUp()
 	{
 		panel = new ProcessingProfitPanel();
-		panel.setModeListener(mode ->
-		{
-			refreshOnHand();
-			rebuildShopping();
-		});
+		panel.setModeListener(mode -> rebuildShopping());
 		panel.setSelectionListener(this::showDetail);
 		panel.setShoppingAddListener(this::addToShopping);
 		panel.setShoppingClearListener(this::clearShopping);
@@ -414,7 +411,27 @@ public class ProcessingProfitPlugin extends Plugin
 			rows.add(toRow(recipe, result, -1));
 		}
 
-		panel.setBrowseRows(rows);
+		panel.setBrowseRows(dedupeByProduct(rows));
+	}
+
+	/**
+	 * Collapses rows that share a primary output item to a single best-profit row, so the same product
+	 * made by several recipes shows once instead of duplicating (e.g. "Mystic fire staff").
+	 *
+	 * @param rows the rows to collapse
+	 * @return one row per output item, keeping the highest profit per action
+	 */
+	private static List<RecipeRow> dedupeByProduct(List<RecipeRow> rows)
+	{
+		Map<Integer, RecipeRow> best = new LinkedHashMap<>();
+		for (RecipeRow row : rows)
+		{
+			RecipeRow existing = best.get(row.getItemId());
+			if (existing == null || row.getProfitEach() > existing.getProfitEach())
+				best.put(row.getItemId(), row);
+		}
+
+		return new ArrayList<>(best.values());
 	}
 
 	private void refreshOnHand()
@@ -457,7 +474,7 @@ public class ProcessingProfitPlugin extends Plugin
 			rows.add(toRow(recipe, profit, result.getMakeableNow()));
 		}
 
-		panel.setOnHandRows(rows);
+		panel.setOnHandRows(dedupeByProduct(rows));
 	}
 
 	private Map<Integer, Integer> readHeld()

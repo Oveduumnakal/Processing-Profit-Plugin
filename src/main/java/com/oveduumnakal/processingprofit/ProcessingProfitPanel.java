@@ -31,6 +31,7 @@ import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Rectangle;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -55,6 +56,7 @@ import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.ScrollPaneConstants;
+import javax.swing.Scrollable;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
@@ -73,7 +75,7 @@ import net.runelite.client.util.QuantityFormatter;
 /**
  * The Processing Profit sidebar: sourcing-mode and valuation-lens selectors, an active-modifier status
  * line, a filter/sort bar (search, skill, gating, members/F2P, sort key, density), and four tabs
- * &mdash; Browse, On-hand, Watchlist and Shopping. Each tab holds the full {@link RecipeRow} set pushed
+ * &mdash; On-hand, Watchlist, Browse and Shopping. Each tab holds the full {@link RecipeRow} set pushed
  * by the plugin and renders
  * a filtered, sorted, display-capped view locally so sorting and searching are instant. Uses the
  * RuneLite fonts, colour scheme and themed scrollbar so it scales with the client.
@@ -85,7 +87,6 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static final Color STALE_DOT = new Color(0xF0, 0xA3, 0x30);
 	private static final Color STAR_ON = new Color(0xF0, 0xC0, 0x40);
 	private static final Color LOCKED_FG = new Color(0x80, 0x80, 0x80);
-	private static final Color WARN_DOT = new Color(0xE0, 0x5A, 0x40);
 	private static final String STALE_TOOLTIP =
 			"Price may be stale (from the 1h fallback or a low-volume item)";
 	private static final String[] MODE_LABELS = {"On-hand", "Buy to order", "Hybrid"};
@@ -139,6 +140,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private Runnable shoppingClearListener;
 	private Set<String> pinnedIds = Collections.emptySet();
 	private RecipeRow detailRow;
+	private RecipeDetail currentDetail;
 	private boolean rebuildingSkills;
 
 	/**
@@ -157,13 +159,13 @@ public class ProcessingProfitPanel extends PluginPanel
 
 		tabGroup = new MaterialTabGroup(display);
 		tabGroup.setBorder(new EmptyBorder(8, 0, 6, 0));
-		MaterialTab browse = new MaterialTab("Browse", tabGroup, scroll(browseRows));
 		MaterialTab onHand = new MaterialTab("On-hand", tabGroup, scroll(onHandRows));
 		MaterialTab watchlist = new MaterialTab("Watch", tabGroup, scroll(watchlistRows));
+		MaterialTab browse = new MaterialTab("Browse", tabGroup, scroll(browseRows));
 		shoppingTab = new MaterialTab("Shop", tabGroup, scroll(shoppingRows));
-		tabGroup.addTab(browse);
 		tabGroup.addTab(onHand);
 		tabGroup.addTab(watchlist);
+		tabGroup.addTab(browse);
 		tabGroup.addTab(shoppingTab);
 
 		detailHolder.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -175,7 +177,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		add(center, BorderLayout.CENTER);
 
 		wireControls();
-		tabGroup.select(browse);
+		tabGroup.select(onHand);
 		renderAll();
 		renderShopping();
 	}
@@ -293,7 +295,7 @@ public class ProcessingProfitPanel extends PluginPanel
 
 	private static JScrollPane scroll(JPanel rows)
 	{
-		JPanel wrap = new JPanel(new BorderLayout());
+		WidthTrackingPanel wrap = new WidthTrackingPanel();
 		wrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		wrap.add(rows, BorderLayout.NORTH);
 
@@ -307,6 +309,48 @@ public class ProcessingProfitPanel extends PluginPanel
 		vertical.setUI((ScrollBarUI) RuneLiteScrollBarUI.createUI(vertical));
 		vertical.setUnitIncrement(16);
 		return scroll;
+	}
+
+	/**
+	 * A scroll view whose width tracks the viewport so rows fill the panel width and their labels
+	 * ellipsize inside it instead of overflowing past the right edge (there is no horizontal scrollbar).
+	 */
+	private static final class WidthTrackingPanel extends JPanel implements Scrollable
+	{
+		private WidthTrackingPanel()
+		{
+			super(new BorderLayout());
+		}
+
+		@Override
+		public Dimension getPreferredScrollableViewportSize()
+		{
+			return getPreferredSize();
+		}
+
+		@Override
+		public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction)
+		{
+			return 16;
+		}
+
+		@Override
+		public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction)
+		{
+			return visibleRect.height;
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportWidth()
+		{
+			return true;
+		}
+
+		@Override
+		public boolean getScrollableTracksViewportHeight()
+		{
+			return false;
+		}
 	}
 
 	/**
@@ -407,6 +451,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		{
 			pinnedIds = ids == null ? Collections.emptySet() : ids;
 			renderAll();
+			renderDetail();
 		});
 	}
 
@@ -456,7 +501,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			onHandData = rows == null ? Collections.emptyList() : rows;
-			renderTab(onHandRows, onHandData, true);
+			renderTab(onHandRows, onHandData);
 		});
 	}
 
@@ -470,7 +515,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			watchlistData = rows == null ? Collections.emptyList() : rows;
-			renderTab(watchlistRows, watchlistData, false);
+			renderTab(watchlistRows, watchlistData);
 		});
 	}
 
@@ -492,9 +537,9 @@ public class ProcessingProfitPanel extends PluginPanel
 
 	private void renderAll()
 	{
-		renderTab(browseRows, browseData, false);
-		renderTab(onHandRows, onHandData, true);
-		renderTab(watchlistRows, watchlistData, false);
+		renderTab(browseRows, browseData);
+		renderTab(onHandRows, onHandData);
+		renderTab(watchlistRows, watchlistData);
 	}
 
 	private void renderShopping()
@@ -638,7 +683,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		}
 	}
 
-	private static int parseQty(String text)
+	private static int resolveQty(String text, int makeable)
 	{
 		try
 		{
@@ -646,7 +691,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		}
 		catch (NumberFormatException e)
 		{
-			return DEFAULT_SHOPPING_QTY;
+			return makeable > 0 ? makeable : DEFAULT_SHOPPING_QTY;
 		}
 	}
 
@@ -662,7 +707,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		return button;
 	}
 
-	private void renderTab(JPanel container, List<RecipeRow> data, boolean showMakeable)
+	private void renderTab(JPanel container, List<RecipeRow> data)
 	{
 		container.removeAll();
 		List<RecipeRow> view = filterAndSort(data);
@@ -675,7 +720,7 @@ public class ProcessingProfitPanel extends PluginPanel
 			boolean compact = densitySelector.getSelectedIndex() == 1;
 			int shown = Math.min(view.size(), MAX_DISPLAY);
 			for (int i = 0; i < shown; i++)
-				container.add(rowComponent(view.get(i), showMakeable, compact));
+				container.add(rowComponent(view.get(i), compact));
 
 			if (view.size() > shown)
 				container.add(placeholder("… and " + (view.size() - shown) + " more"));
@@ -796,12 +841,12 @@ public class ProcessingProfitPanel extends PluginPanel
 		return label;
 	}
 
-	private JPanel rowComponent(RecipeRow row, boolean showMakeable, boolean compact)
+	private JPanel rowComponent(RecipeRow row, boolean compact)
 	{
-		JPanel panel = new JPanel(new BorderLayout(6, 1));
+		JPanel panel = new JPanel(new BorderLayout(6, 0));
 		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		panel.setBorder(BorderFactory.createCompoundBorder(
-				new EmptyBorder(0, 0, compact ? 2 : 4, 0),
+				new EmptyBorder(0, 0, compact ? 2 : 3, 0),
 				new EmptyBorder(compact ? 3 : 5, 7, compact ? 3 : 5, 7)));
 		panel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		panel.addMouseListener(new MouseAdapter()
@@ -817,85 +862,30 @@ public class ProcessingProfitPanel extends PluginPanel
 		if (tip != null)
 			panel.setToolTipText(tip);
 
+		JPanel leading = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
+		leading.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		if (row.getRecipe() != null)
-			panel.add(pinStar(row), BorderLayout.WEST);
+			leading.add(pinStar(row, greyed));
+
+		if (row.isStale())
+			leading.add(staleDot(greyed));
+
+		panel.add(leading, BorderLayout.WEST);
 
 		JLabel name = new JLabel(row.getProduct());
 		name.setFont(FontManager.getRunescapeSmallFont());
 		name.setForeground(greyed ? LOCKED_FG : Color.WHITE);
+		panel.add(name, BorderLayout.CENTER);
 
 		JLabel profit = new JLabel(signed(row.getProfitEach()));
 		profit.setFont(FontManager.getRunescapeSmallFont());
-		profit.setForeground(row.getProfitEach() >= 0
-				? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR);
+		profit.setForeground(greyed ? LOCKED_FG : (row.getProfitEach() >= 0
+				? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR));
 		profit.setHorizontalAlignment(SwingConstants.RIGHT);
-
-		JPanel top = new JPanel(new BorderLayout(6, 0));
-		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		JComponent icons = leadingIcons(row);
-		if (icons != null)
-			top.add(icons, BorderLayout.WEST);
-
-		top.add(name, BorderLayout.CENTER);
-		top.add(profit, BorderLayout.EAST);
-		panel.add(top, BorderLayout.NORTH);
-
-		if (!compact)
-		{
-			JLabel meta = new JLabel(metaText(row, showMakeable));
-			meta.setFont(FontManager.getRunescapeSmallFont());
-			meta.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-			panel.add(meta, BorderLayout.SOUTH);
-		}
+		panel.add(profit, BorderLayout.EAST);
 
 		capHeight(panel);
 		return panel;
-	}
-
-	private static String metaText(RecipeRow row, boolean showMakeable)
-	{
-		StringBuilder sb = new StringBuilder();
-		sb.append("gp/hr ");
-		sb.append(row.isThroughputKnown()
-				? QuantityFormatter.quantityToStackSize(row.getGpPerHour()) : "n/a");
-		sb.append("  xp/hr ");
-		sb.append(row.isThroughputKnown()
-				? QuantityFormatter.quantityToStackSize(Math.round(row.getXpPerHour())) : "n/a");
-		sb.append("  roi ");
-		sb.append(Math.round(row.getRoi() * 100));
-		sb.append('%');
-		sb.append("  vol ");
-		sb.append(QuantityFormatter.quantityToStackSize(row.getVolume()));
-		if (row.getSuccessPercent() != null)
-		{
-			long pct = Math.round(row.getSuccessPercent() * 100);
-			sb.append("  succ ");
-			sb.append(pct);
-			sb.append('%');
-		}
-
-		sb.append("  lvl ");
-		sb.append(row.getLevelReq());
-		if (showMakeable && row.getMakeableNow() >= 0)
-		{
-			sb.append("  x");
-			sb.append(row.getMakeableNow());
-		}
-
-		if (row.getBuyLimitPerWindow() > 0)
-		{
-			sb.append("  lim ");
-			sb.append(QuantityFormatter.quantityToStackSize(row.getBuyLimitPerWindow()));
-			sb.append("/4h");
-		}
-
-		if (row.isLocked() && row.getLockReason() != null)
-		{
-			sb.append("  · locked: ");
-			sb.append(row.getLockReason());
-		}
-
-		return sb.toString();
 	}
 
 	private static String signed(long value)
@@ -904,15 +894,15 @@ public class ProcessingProfitPanel extends PluginPanel
 		return (value >= 0 ? "+" : "-") + magnitude;
 	}
 
-	private JLabel pinStar(RecipeRow row)
+	private JLabel pinStar(RecipeRow row, boolean greyed)
 	{
 		boolean pinned = isPinned(row);
+		Color base = greyed ? LOCKED_FG : (pinned ? STAR_ON : ColorScheme.LIGHT_GRAY_COLOR);
 		JLabel star = new JLabel(pinned ? "★" : "☆");
 		star.setFont(FontManager.getRunescapeSmallFont());
-		star.setForeground(pinned ? STAR_ON : ColorScheme.LIGHT_GRAY_COLOR);
+		star.setForeground(base);
 		star.setToolTipText(pinned ? "Unpin from watchlist" : "Pin to watchlist");
 		star.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		star.setBorder(new EmptyBorder(0, 0, 0, 4));
 		star.addMouseListener(new MouseAdapter()
 		{
 			@Override
@@ -920,43 +910,31 @@ public class ProcessingProfitPanel extends PluginPanel
 			{
 				fireTogglePin(row);
 			}
+
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				star.setText("★");
+				star.setForeground(pinned ? STAR_ON.brighter() : STAR_ON);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				star.setText(pinned ? "★" : "☆");
+				star.setForeground(base);
+			}
 		});
 		return star;
 	}
 
-	private static JLabel staleDot()
+	private static JLabel staleDot(boolean greyed)
 	{
 		JLabel dot = new JLabel("●");
 		dot.setFont(FontManager.getRunescapeSmallFont());
-		dot.setForeground(STALE_DOT);
+		dot.setForeground(greyed ? LOCKED_FG : STALE_DOT);
 		dot.setToolTipText(STALE_TOOLTIP);
 		return dot;
-	}
-
-	private static JLabel warnDot(String tooltip)
-	{
-		JLabel dot = new JLabel("▲");
-		dot.setFont(FontManager.getRunescapeSmallFont());
-		dot.setForeground(WARN_DOT);
-		dot.setToolTipText(tooltip);
-		return dot;
-	}
-
-	private static JComponent leadingIcons(RecipeRow row)
-	{
-		boolean warned = row.isThrottled() || row.isLowVolume();
-		if (!row.isStale() && !warned)
-			return null;
-
-		JPanel icons = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-		icons.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		if (warned)
-			icons.add(warnDot(warningText(row)));
-
-		if (row.isStale())
-			icons.add(staleDot());
-
-		return icons;
 	}
 
 	private static String warningText(RecipeRow row)
@@ -999,12 +977,21 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		SwingUtilities.invokeLater(() ->
 		{
-			detailHolder.removeAll();
-			detailHolder.add(detailCard(detail), BorderLayout.CENTER);
-			detailHolder.revalidate();
-			detailHolder.repaint();
+			currentDetail = detail;
+			renderDetail();
 			((CardLayout) center.getLayout()).show(center, "detail");
 		});
+	}
+
+	private void renderDetail()
+	{
+		if (currentDetail == null)
+			return;
+
+		detailHolder.removeAll();
+		detailHolder.add(detailCard(currentDetail), BorderLayout.CENTER);
+		detailHolder.revalidate();
+		detailHolder.repaint();
 	}
 
 	private void showList()
@@ -1074,7 +1061,8 @@ public class ProcessingProfitPanel extends PluginPanel
 		panel.add(header);
 
 		RecipeRow row = detailRow;
-		JTextField qty = new JTextField(String.valueOf(DEFAULT_SHOPPING_QTY));
+		int makeable = row != null ? row.getMakeableNow() : -1;
+		JTextField qty = new JTextField(makeable > 0 ? String.valueOf(makeable) : "");
 		styleSearch(qty);
 
 		JPanel controls = new JPanel(new BorderLayout(6, 0));
@@ -1087,7 +1075,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		label.setFont(FontManager.getRunescapeSmallFont());
 		controls.add(label, BorderLayout.WEST);
 		controls.add(qty, BorderLayout.CENTER);
-		controls.add(smallButton("➕ Add", e -> fireShoppingAdd(row, parseQty(qty.getText()))),
+		controls.add(smallButton("➕ Add", e -> fireShoppingAdd(row, resolveQty(qty.getText(), makeable))),
 				BorderLayout.EAST);
 		capHeight(controls);
 		panel.add(controls);
