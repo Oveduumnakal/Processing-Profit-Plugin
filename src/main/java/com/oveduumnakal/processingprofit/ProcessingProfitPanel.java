@@ -30,6 +30,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
@@ -98,6 +99,8 @@ public class ProcessingProfitPanel extends PluginPanel
 	private final JTextField searchField = new JTextField();
 	private final JLabel modifierLine = new JLabel("Modifiers: none");
 
+	private static final int DEFAULT_SHOPPING_QTY = 28;
+
 	private final JPanel browseRows = listPanel();
 	private final JPanel onHandRows = listPanel();
 	private final JPanel watchlistRows = listPanel();
@@ -106,13 +109,20 @@ public class ProcessingProfitPanel extends PluginPanel
 	private List<RecipeRow> browseData = Collections.emptyList();
 	private List<RecipeRow> onHandData = Collections.emptyList();
 	private List<RecipeRow> watchlistData = Collections.emptyList();
-	private List<RecipeRow> shoppingData = Collections.emptyList();
+	private ShoppingList shoppingList = new ShoppingList(Collections.emptyList(), 0L, 0, true);
+	private List<String> shoppingSummary = Collections.emptyList();
 
 	private final JPanel center = new JPanel(new CardLayout());
 	private final JPanel detailHolder = new JPanel(new BorderLayout());
 
+	private MaterialTabGroup tabGroup;
+	private MaterialTab shoppingTab;
+
 	private Consumer<SourcingMode> modeListener;
 	private Consumer<RecipeRow> selectionListener;
+	private Consumer<ShoppingRequest> shoppingAddListener;
+	private Runnable shoppingClearListener;
+	private RecipeRow detailRow;
 	private boolean rebuildingSkills;
 
 	/**
@@ -129,16 +139,16 @@ public class ProcessingProfitPanel extends PluginPanel
 		JPanel display = new JPanel(new BorderLayout());
 		display.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		MaterialTabGroup tabGroup = new MaterialTabGroup(display);
+		tabGroup = new MaterialTabGroup(display);
 		tabGroup.setBorder(new EmptyBorder(8, 0, 6, 0));
 		MaterialTab browse = new MaterialTab("Browse", tabGroup, scroll(browseRows));
 		MaterialTab onHand = new MaterialTab("On-hand", tabGroup, scroll(onHandRows));
 		MaterialTab watchlist = new MaterialTab("Watch", tabGroup, scroll(watchlistRows));
-		MaterialTab shopping = new MaterialTab("Shop", tabGroup, scroll(shoppingRows));
+		shoppingTab = new MaterialTab("Shop", tabGroup, scroll(shoppingRows));
 		tabGroup.addTab(browse);
 		tabGroup.addTab(onHand);
 		tabGroup.addTab(watchlist);
-		tabGroup.addTab(shopping);
+		tabGroup.addTab(shoppingTab);
 
 		detailHolder.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		center.setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -151,6 +161,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		wireControls();
 		tabGroup.select(browse);
 		renderAll();
+		renderShopping();
 	}
 
 	private void wireControls()
@@ -326,8 +337,29 @@ public class ProcessingProfitPanel extends PluginPanel
 
 	private void fireSelection(RecipeRow row)
 	{
+		detailRow = row;
 		if (selectionListener != null)
 			selectionListener.accept(row);
+	}
+
+	/**
+	 * Registers a callback fired when the user adds a product to the shopping list from the detail view.
+	 *
+	 * @param listener the callback, invoked with the product recipe and target quantity
+	 */
+	public void setShoppingAddListener(Consumer<ShoppingRequest> listener)
+	{
+		this.shoppingAddListener = listener;
+	}
+
+	/**
+	 * Registers a callback fired when the user clears the shopping list.
+	 *
+	 * @param listener the callback
+	 */
+	public void setShoppingClearListener(Runnable listener)
+	{
+		this.shoppingClearListener = listener;
 	}
 
 	/**
@@ -384,16 +416,18 @@ public class ProcessingProfitPanel extends PluginPanel
 	}
 
 	/**
-	 * Replaces the Shopping tab data.
+	 * Replaces the Shopping tab's aggregated material list and its queued-product summary.
 	 *
-	 * @param rows the rows to show
+	 * @param list    the shopping list to show
+	 * @param summary one line per queued product (e.g. "28&times; Cannonball")
 	 */
-	public void setShoppingRows(List<RecipeRow> rows)
+	public void setShoppingList(ShoppingList list, List<String> summary)
 	{
 		SwingUtilities.invokeLater(() ->
 		{
-			shoppingData = rows == null ? Collections.emptyList() : rows;
-			renderTab(shoppingRows, shoppingData, true);
+			shoppingList = list == null ? new ShoppingList(Collections.emptyList(), 0L, 0, true) : list;
+			shoppingSummary = summary == null ? Collections.emptyList() : summary;
+			renderShopping();
 		});
 	}
 
@@ -402,7 +436,171 @@ public class ProcessingProfitPanel extends PluginPanel
 		renderTab(browseRows, browseData, false);
 		renderTab(onHandRows, onHandData, true);
 		renderTab(watchlistRows, watchlistData, false);
-		renderTab(shoppingRows, shoppingData, true);
+	}
+
+	private void renderShopping()
+	{
+		shoppingRows.removeAll();
+		shoppingRows.add(shoppingHeaderRow());
+		if (!shoppingSummary.isEmpty())
+			shoppingRows.add(section("Making", shoppingSummary));
+
+		List<ShoppingLine> lines = shoppingList.getLines();
+		if (lines.isEmpty())
+		{
+			shoppingRows.add(placeholder(shoppingSummary.isEmpty()
+					? "No shopping list yet. Open a recipe and press ➕ Add."
+					: "Held stock covers the whole list — nothing to buy."));
+		}
+		else
+		{
+			for (ShoppingLine line : lines)
+				shoppingRows.add(shoppingLineComponent(line));
+
+			shoppingRows.add(shoppingTotalRow());
+		}
+
+		shoppingRows.revalidate();
+		shoppingRows.repaint();
+	}
+
+	private JPanel shoppingHeaderRow()
+	{
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		row.setBorder(new EmptyBorder(2, 2, 4, 2));
+
+		JLabel title = new JLabel("Shopping list");
+		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setForeground(Color.WHITE);
+		row.add(title, BorderLayout.WEST);
+
+		if (!shoppingSummary.isEmpty())
+			row.add(smallButton("Clear", e -> fireShoppingClear()), BorderLayout.EAST);
+
+		capHeight(row);
+		return row;
+	}
+
+	private JPanel shoppingLineComponent(ShoppingLine line)
+	{
+		JPanel panel = new JPanel(new BorderLayout(6, 1));
+		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		panel.setBorder(BorderFactory.createCompoundBorder(
+				new EmptyBorder(0, 0, 2, 0),
+				new EmptyBorder(3, 7, 3, 7)));
+
+		JLabel name = new JLabel(line.getToBuy() + "× " + line.getName());
+		name.setFont(FontManager.getRunescapeSmallFont());
+		name.setForeground(Color.WHITE);
+
+		JLabel cost = new JLabel(line.isPriced() ? num(line.getTotalCost()) : "?");
+		cost.setFont(FontManager.getRunescapeSmallFont());
+		cost.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		cost.setHorizontalAlignment(SwingConstants.RIGHT);
+
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		top.add(name, BorderLayout.CENTER);
+		top.add(cost, BorderLayout.EAST);
+		panel.add(top, BorderLayout.NORTH);
+
+		JLabel meta = new JLabel(shoppingMetaText(line));
+		meta.setFont(FontManager.getRunescapeSmallFont());
+		meta.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		panel.add(meta, BorderLayout.SOUTH);
+
+		capHeight(panel);
+		return panel;
+	}
+
+	private static String shoppingMetaText(ShoppingLine line)
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append('@');
+		sb.append(line.isPriced() ? num(line.getUnitPrice()) : "?");
+		if (line.getHeld() > 0)
+		{
+			sb.append("  held ");
+			sb.append(line.getHeld());
+		}
+
+		if (line.getBuyLimit() > 0)
+		{
+			sb.append("  lim ");
+			sb.append(line.getBuyLimit());
+			sb.append(" (");
+			sb.append(line.getWindows());
+			sb.append("w)");
+		}
+
+		return sb.toString();
+	}
+
+	private JLabel shoppingTotalRow()
+	{
+		StringBuilder sb = new StringBuilder();
+		sb.append("Total ");
+		sb.append(num(shoppingList.getTotalCost()));
+		sb.append(" gp");
+		int windows = shoppingList.getMaxWindows();
+		if (windows > 0)
+		{
+			sb.append("  ·  ");
+			sb.append(windows);
+			sb.append(windows == 1 ? " window (~4h)" : " windows (~" + (windows * 4) + "h)");
+		}
+
+		if (!shoppingList.isFullyPriced())
+			sb.append("  ·  some prices unknown");
+
+		JLabel label = new JLabel(sb.toString());
+		label.setFont(FontManager.getRunescapeBoldFont());
+		label.setForeground(ColorScheme.BRAND_ORANGE);
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		label.setBorder(new EmptyBorder(6, 2, 4, 2));
+		return label;
+	}
+
+	private void fireShoppingClear()
+	{
+		if (shoppingClearListener != null)
+			shoppingClearListener.run();
+	}
+
+	private void fireShoppingAdd(RecipeRow row, int qty)
+	{
+		if (shoppingAddListener != null && row != null && row.getRecipe() != null)
+		{
+			shoppingAddListener.accept(new ShoppingRequest(row.getRecipe(), qty));
+			showList();
+			if (tabGroup != null && shoppingTab != null)
+				tabGroup.select(shoppingTab);
+		}
+	}
+
+	private static int parseQty(String text)
+	{
+		try
+		{
+			return Math.max(1, Integer.parseInt(text.trim()));
+		}
+		catch (NumberFormatException e)
+		{
+			return DEFAULT_SHOPPING_QTY;
+		}
+	}
+
+	private static JButton smallButton(String text, ActionListener listener)
+	{
+		JButton button = new JButton(text);
+		button.setFont(FontManager.getRunescapeSmallFont());
+		button.setFocusable(false);
+		button.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		button.setForeground(Color.WHITE);
+		button.setBorder(new EmptyBorder(3, 8, 3, 8));
+		button.addActionListener(listener);
+		return button;
 	}
 
 	private void renderTab(JPanel container, List<RecipeRow> data, boolean showMakeable)
@@ -674,7 +872,43 @@ public class ProcessingProfitPanel extends PluginPanel
 		if (d.isStale())
 			content.add(section("Note", Collections.singletonList(STALE_TOOLTIP)));
 
+		content.add(shoppingActions());
 		return scroll(content);
+	}
+
+	private JPanel shoppingActions()
+	{
+		JPanel panel = listPanel();
+		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.setBorder(new EmptyBorder(8, 2, 0, 2));
+
+		JLabel header = new JLabel("Shopping list");
+		header.setFont(FontManager.getRunescapeSmallFont());
+		header.setForeground(ColorScheme.BRAND_ORANGE);
+		header.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.add(header);
+
+		RecipeRow row = detailRow;
+		JTextField qty = new JTextField(String.valueOf(DEFAULT_SHOPPING_QTY));
+		styleSearch(qty);
+
+		JPanel controls = new JPanel(new BorderLayout(6, 0));
+		controls.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		controls.setBorder(new EmptyBorder(2, 0, 0, 0));
+		controls.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JLabel label = new JLabel("Target qty");
+		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		label.setFont(FontManager.getRunescapeSmallFont());
+		controls.add(label, BorderLayout.WEST);
+		controls.add(qty, BorderLayout.CENTER);
+		controls.add(smallButton("➕ Add", e -> fireShoppingAdd(row, parseQty(qty.getText()))),
+				BorderLayout.EAST);
+		capHeight(controls);
+		panel.add(controls);
+
+		capHeight(panel);
+		return panel;
 	}
 
 	private JButton backButton()

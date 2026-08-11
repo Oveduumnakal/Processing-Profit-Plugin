@@ -36,9 +36,11 @@ import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.ToIntFunction;
 import javax.inject.Inject;
 
 import com.google.inject.Provides;
+import com.oveduumnakal.processingprofit.WikiPriceClient.ItemMapping;
 import lombok.extern.slf4j.Slf4j;
 
 import net.runelite.api.Client;
@@ -98,6 +100,7 @@ public class ProcessingProfitPlugin extends Plugin
 	private final RecipeRepository recipes = new RecipeRepository();
 	private final ProfitCalculator calculator = new ProfitCalculator();
 	private final SourcingEngine sourcing = new SourcingEngine(calculator);
+	private final List<ShoppingRequest> shoppingSelection = new ArrayList<>();
 
 	private ProcessingProfitPanel panel;
 	private NavigationButton navButton;
@@ -108,8 +111,14 @@ public class ProcessingProfitPlugin extends Plugin
 	protected void startUp()
 	{
 		panel = new ProcessingProfitPanel();
-		panel.setModeListener(mode -> refreshOnHand());
+		panel.setModeListener(mode ->
+		{
+			refreshOnHand();
+			rebuildShopping();
+		});
 		panel.setSelectionListener(this::showDetail);
+		panel.setShoppingAddListener(this::addToShopping);
+		panel.setShoppingClearListener(this::clearShopping);
 		navButton = NavigationButton.builder()
 				.tooltip("Processing Profit")
 				.icon(navIcon())
@@ -155,6 +164,7 @@ public class ProcessingProfitPlugin extends Plugin
 		prices.refresh();
 		buildBrowse();
 		refreshOnHand();
+		rebuildShopping();
 	}
 
 	@Subscribe
@@ -162,7 +172,10 @@ public class ProcessingProfitPlugin extends Plugin
 	{
 		int id = event.getContainerId();
 		if (id == InventoryID.INV || id == InventoryID.BANK)
+		{
 			refreshOnHand();
+			rebuildShopping();
+		}
 	}
 
 	private void buildBrowse()
@@ -278,6 +291,78 @@ public class ProcessingProfitPlugin extends Plugin
 					Collections.emptyList(), calculator);
 			panel.showDetail(detail);
 		});
+	}
+
+	private void addToShopping(ShoppingRequest request)
+	{
+		if (request.getRecipe() == null || request.getTargetQty() <= 0)
+			return;
+
+		synchronized (shoppingSelection)
+		{
+			shoppingSelection.add(request);
+		}
+
+		rebuildShopping();
+	}
+
+	private void clearShopping()
+	{
+		synchronized (shoppingSelection)
+		{
+			shoppingSelection.clear();
+		}
+
+		rebuildShopping();
+	}
+
+	private void rebuildShopping()
+	{
+		if (!loaded)
+			return;
+
+		if (panel.selectedMode() != SourcingMode.HYBRID)
+		{
+			executor.execute(() -> buildShopping(Collections.emptyMap()));
+			return;
+		}
+
+		clientThread.invoke(() ->
+		{
+			Map<Integer, Integer> held = client.getGameState() == GameState.LOGGED_IN
+					? readHeld() : Collections.emptyMap();
+			executor.execute(() -> buildShopping(held));
+		});
+	}
+
+	private void buildShopping(Map<Integer, Integer> held)
+	{
+		List<ShoppingRequest> requests;
+		List<String> summary = new ArrayList<>();
+		synchronized (shoppingSelection)
+		{
+			requests = new ArrayList<>(shoppingSelection);
+		}
+
+		for (ShoppingRequest req : requests)
+		{
+			List<RecipeOutput> outputs = req.getRecipe().getOutputs();
+			String name = outputs.get(0).getName();
+			summary.add(req.getTargetQty() + "× " + name);
+		}
+
+		PriceConfig cfg = priceConfig();
+		ChainValuator valuator = new ChainValuator(recipes, prices, cfg, s -> BROWSE_LEVEL,
+				Collections.emptyList());
+		ToIntFunction<Integer> buyLimit = id ->
+		{
+			ItemMapping m = prices.mapping(id);
+			return m == null ? 0 : m.getLimit();
+		};
+		ShoppingListBuilder builder = new ShoppingListBuilder(valuator, prices, s -> BROWSE_LEVEL,
+				Collections.emptyList(), buyLimit);
+		ShoppingList list = builder.build(requests, held);
+		panel.setShoppingList(list, summary);
 	}
 
 	private RecipeRow toRow(Recipe recipe, ProfitResult result, int makeable)
