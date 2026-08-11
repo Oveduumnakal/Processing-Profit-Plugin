@@ -30,6 +30,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -83,6 +84,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static final Color STALE_DOT = new Color(0xF0, 0xA3, 0x30);
 	private static final Color STAR_ON = new Color(0xF0, 0xC0, 0x40);
 	private static final Color LOCKED_FG = new Color(0x80, 0x80, 0x80);
+	private static final Color WARN_DOT = new Color(0xE0, 0x5A, 0x40);
 	private static final String STALE_TOOLTIP =
 			"Price may be stale (from the 1h fallback or a low-volume item)";
 	private static final String[] MODE_LABELS = {"On-hand", "Buy to order", "Hybrid"};
@@ -795,10 +797,9 @@ public class ProcessingProfitPanel extends PluginPanel
 			}
 		});
 		boolean greyed = row.isLocked() && gatingSelector.getSelectedIndex() == GATING_GREY;
-		if (row.isLocked() && row.getLockReason() != null)
-			panel.setToolTipText("Locked — " + row.getLockReason());
-		else if (row.isStale())
-			panel.setToolTipText(STALE_TOOLTIP);
+		String tip = rowTooltip(row);
+		if (tip != null)
+			panel.setToolTipText(tip);
 
 		if (row.getRecipe() != null)
 			panel.add(pinStar(row), BorderLayout.WEST);
@@ -815,8 +816,9 @@ public class ProcessingProfitPanel extends PluginPanel
 
 		JPanel top = new JPanel(new BorderLayout(6, 0));
 		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		if (row.isStale())
-			top.add(staleDot(), BorderLayout.WEST);
+		JComponent icons = leadingIcons(row);
+		if (icons != null)
+			top.add(icons, BorderLayout.WEST);
 
 		top.add(name, BorderLayout.CENTER);
 		top.add(profit, BorderLayout.EAST);
@@ -864,6 +866,13 @@ public class ProcessingProfitPanel extends PluginPanel
 			sb.append(row.getMakeableNow());
 		}
 
+		if (row.getBuyLimitPerWindow() > 0)
+		{
+			sb.append("  lim ");
+			sb.append(QuantityFormatter.quantityToStackSize(row.getBuyLimitPerWindow()));
+			sb.append("/4h");
+		}
+
 		if (row.isLocked() && row.getLockReason() != null)
 		{
 			sb.append("  · locked: ");
@@ -906,6 +915,63 @@ public class ProcessingProfitPanel extends PluginPanel
 		dot.setForeground(STALE_DOT);
 		dot.setToolTipText(STALE_TOOLTIP);
 		return dot;
+	}
+
+	private static JLabel warnDot(String tooltip)
+	{
+		JLabel dot = new JLabel("▲");
+		dot.setFont(FontManager.getRunescapeSmallFont());
+		dot.setForeground(WARN_DOT);
+		dot.setToolTipText(tooltip);
+		return dot;
+	}
+
+	private static JComponent leadingIcons(RecipeRow row)
+	{
+		boolean warned = row.isThrottled() || row.isLowVolume();
+		if (!row.isStale() && !warned)
+			return null;
+
+		JPanel icons = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+		icons.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		if (warned)
+			icons.add(warnDot(warningText(row)));
+
+		if (row.isStale())
+			icons.add(staleDot());
+
+		return icons;
+	}
+
+	private static String warningText(RecipeRow row)
+	{
+		if (row.isThrottled() && row.isLowVolume())
+			return "Buy-limit throttled (~" + row.getBuyLimitPerWindow() + "/4h) and low volume";
+
+		if (row.isThrottled())
+			return "Buy-limit throttled (~" + row.getBuyLimitPerWindow() + "/4h)";
+
+		return "Low trade volume";
+	}
+
+	private static String rowTooltip(RecipeRow row)
+	{
+		if (row.isLocked() && row.getLockReason() != null)
+			return "Locked — " + row.getLockReason();
+
+		StringBuilder sb = new StringBuilder();
+		if (row.isThrottled() || row.isLowVolume())
+			sb.append(warningText(row));
+
+		if (row.isStale())
+		{
+			if (sb.length() > 0)
+				sb.append("; ");
+
+			sb.append(STALE_TOOLTIP);
+		}
+
+		return sb.length() > 0 ? sb.toString() : null;
 	}
 
 	/**
@@ -953,6 +1019,9 @@ public class ProcessingProfitPanel extends PluginPanel
 			content.add(section("Success @ level " + d.getLevel(), successLines(d)));
 
 		content.add(section("Break-even buy price", breakEvenLines(d)));
+		if (detailRow != null)
+			content.add(section("Liquidity", liquidityLines(detailRow)));
+
 		if (d.isStale())
 			content.add(section("Note", Collections.singletonList(STALE_TOOLTIP)));
 
@@ -1130,6 +1199,21 @@ public class ProcessingProfitPanel extends PluginPanel
 		List<String> lines = new ArrayList<>();
 		for (CostLine be : d.getBreakEven())
 			lines.add(be.getLabel() + ": " + num(be.getUnitPrice()));
+
+		return lines;
+	}
+
+	private static List<String> liquidityLines(RecipeRow row)
+	{
+		List<String> lines = new ArrayList<>();
+		lines.add("Buy limit: " + (row.getBuyLimitPerWindow() > 0
+				? num(row.getBuyLimitPerWindow()) + " / 4h window" : "unlimited"));
+		lines.add("Volume: " + num(row.getVolume()));
+		if (row.isThrottled())
+			lines.add("▲ Buy-limit throttled — small realistic throughput");
+
+		if (row.isLowVolume())
+			lines.add("▲ Low trade volume — may be slow to buy/sell");
 
 		return lines;
 	}

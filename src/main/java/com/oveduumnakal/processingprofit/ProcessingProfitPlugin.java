@@ -515,11 +515,7 @@ public class ProcessingProfitPlugin extends Plugin
 		PriceConfig cfg = priceConfig();
 		ChainValuator valuator = new ChainValuator(recipes, prices, cfg, this::levelFor,
 				Collections.emptyList());
-		ToIntFunction<Integer> buyLimit = id ->
-		{
-			ItemMapping m = prices.mapping(id);
-			return m == null ? 0 : m.getLimit();
-		};
+		ToIntFunction<Integer> buyLimit = this::buyLimitOf;
 		ShoppingListBuilder builder = new ShoppingListBuilder(valuator, prices, this::levelFor,
 				Collections.emptyList(), buyLimit);
 		ShoppingList list = builder.build(requests, held);
@@ -537,10 +533,17 @@ public class ProcessingProfitPlugin extends Plugin
 				? null : result.getSuccessChance();
 		long volume = prices.volume(primary.getItemId());
 		GateResult gate = gateFor(recipe);
+		LiquidityResult liq = Liquidity.assess(recipe, this::buyLimitOf, volume);
 		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, result.getProfitEach(),
 				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
 				success, levelReq, volume, makeable, result.isStalePrices(), gate.isLocked(),
-				gate.getReason(), recipe);
+				gate.getReason(), liq.getUnitsPerWindow(), liq.isThrottled(), liq.isLowVolume(), recipe);
+	}
+
+	private int buyLimitOf(int itemId)
+	{
+		ItemMapping mapping = prices.mapping(itemId);
+		return mapping == null ? 0 : mapping.getLimit();
 	}
 
 	private int levelFor(String skill)
