@@ -72,8 +72,9 @@ import net.runelite.client.util.QuantityFormatter;
 
 /**
  * The Processing Profit sidebar: sourcing-mode and valuation-lens selectors, an active-modifier status
- * line, a filter/sort bar (search, skill, sort key, density), and four tabs &mdash; Browse, On-hand,
- * Watchlist and Shopping. Each tab holds the full {@link RecipeRow} set pushed by the plugin and renders
+ * line, a filter/sort bar (search, skill, gating, members/F2P, sort key, density), and four tabs
+ * &mdash; Browse, On-hand, Watchlist and Shopping. Each tab holds the full {@link RecipeRow} set pushed
+ * by the plugin and renders
  * a filtered, sorted, display-capped view locally so sorting and searching are instant. Uses the
  * RuneLite fonts, colour scheme and themed scrollbar so it scales with the client.
  */
@@ -95,6 +96,9 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static final String ALL_SKILLS = "All skills";
 	private static final int GATING_HIDE = 0;
 	private static final int GATING_GREY = 1;
+	private static final int MEMBERS_ALL = 0;
+	private static final int MEMBERS_F2P = 1;
+	private static final int MEMBERS_P2P = 2;
 
 	private final JComboBox<String> modeSelector = new JComboBox<>(MODE_LABELS);
 	private final JComboBox<String> valuationSelector =
@@ -102,6 +106,8 @@ public class ProcessingProfitPanel extends PluginPanel
 	private final JComboBox<String> skillSelector = new JComboBox<>(new String[]{ALL_SKILLS});
 	private final JComboBox<String> gatingSelector =
 			new JComboBox<>(new String[]{"Hide locked", "Grey locked", "Show all"});
+	private final JComboBox<String> membersSelector =
+			new JComboBox<>(new String[]{"All worlds", "F2P only", "Members only"});
 	private final JComboBox<String> sortSelector = new JComboBox<>(SORT_LABELS);
 	private final JComboBox<String> densitySelector = new JComboBox<>(new String[]{"Cards", "Compact"});
 	private final JTextField searchField = new JTextField();
@@ -180,6 +186,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		sortSelector.addActionListener(e -> renderAll());
 		densitySelector.addActionListener(e -> renderAll());
 		gatingSelector.addActionListener(e -> renderAll());
+		membersSelector.addActionListener(e -> renderAll());
 		skillSelector.addActionListener(e ->
 		{
 			if (!rebuildingSkills)
@@ -217,6 +224,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		styleCombo(valuationSelector);
 		styleCombo(skillSelector);
 		styleCombo(gatingSelector);
+		styleCombo(membersSelector);
 		styleCombo(sortSelector);
 		styleCombo(densitySelector);
 		styleSearch(searchField);
@@ -233,6 +241,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		header.add(labelledRow("Search", searchField));
 		header.add(labelledRow("Skill", skillSelector));
 		header.add(labelledRow("Gating", gatingSelector));
+		header.add(labelledRow("Members", membersSelector));
 		header.add(labelledRow("Sort", sortSelector));
 		header.add(labelledRow("View", densitySelector));
 
@@ -684,6 +693,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		boolean allSkills = skill == null || ALL_SKILLS.equals(skill);
 
 		boolean hideLocked = gatingSelector.getSelectedIndex() == GATING_HIDE;
+		int membersFilter = membersSelector.getSelectedIndex();
 		List<RecipeRow> out = new ArrayList<>();
 		for (RecipeRow row : data)
 		{
@@ -691,6 +701,12 @@ public class ProcessingProfitPanel extends PluginPanel
 				continue;
 
 			if (hideLocked && row.isLocked())
+				continue;
+
+			if (membersFilter == MEMBERS_F2P && row.isMembers())
+				continue;
+
+			if (membersFilter == MEMBERS_P2P && !row.isMembers())
 				continue;
 
 			if (!query.isEmpty() && !row.getProduct().toLowerCase().contains(query))
