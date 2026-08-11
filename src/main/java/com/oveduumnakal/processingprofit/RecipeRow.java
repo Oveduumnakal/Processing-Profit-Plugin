@@ -33,7 +33,8 @@ import lombok.Value;
  * number makeable now (used by the On-hand and Shopping tabs; {@code -1} when not applicable), a
  * staleness flag, whether the recipe is {@code locked} for the player (skill level or quest gated) with
  * a short {@code lockReason}, the binding input buy limit per 4h window ({@code buyLimitPerWindow},
- * {@code 0} = unlimited) with {@code throttled}/{@code lowVolume} liquidity warnings, and the source
+ * {@code 0} = unlimited) with {@code throttled}/{@code lowVolume} liquidity warnings, whether the recipe
+ * is {@code members}-only, and the source
  * {@link Recipe} so a click can rebuild the full detail breakdown. A view model built by the plugin and
  * rendered by {@link ProcessingProfitPanel}.
  */
@@ -58,5 +59,6 @@ public class RecipeRow
 	int buyLimitPerWindow;
 	boolean throttled;
 	boolean lowVolume;
+	boolean members;
 	Recipe recipe;
 }

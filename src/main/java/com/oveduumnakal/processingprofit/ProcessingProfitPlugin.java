@@ -642,7 +642,8 @@ public class ProcessingProfitPlugin extends Plugin
 		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, result.getProfitEach(),
 				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
 				success, levelReq, volume, makeable, result.isStalePrices(), gate.isLocked(),
-				gate.getReason(), liq.getUnitsPerWindow(), liq.isThrottled(), liq.isLowVolume(), recipe);
+				gate.getReason(), liq.getUnitsPerWindow(), liq.isThrottled(), liq.isLowVolume(),
+				recipe.isMembers(), recipe);
 	}
 
 	private int buyLimitOf(int itemId)
