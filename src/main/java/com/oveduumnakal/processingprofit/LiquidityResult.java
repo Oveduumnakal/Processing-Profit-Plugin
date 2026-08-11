@@ -27,36 +27,25 @@ package com.oveduumnakal.processingprofit;
 import lombok.Value;
 
 /**
- * A display row for the recipe table: the product name and id, per-action profit, GP/hr (with a
- * {@code throughputKnown} flag so a recipe with no tick data shows "n/a"), success percentage
- * ({@code null} for always-100% recipes, shown as "&mdash;"), the level requirement, GE volume, the
- * number makeable now (used by the On-hand and Shopping tabs; {@code -1} when not applicable), a
- * staleness flag, whether the recipe is {@code locked} for the player (skill level or quest gated) with
- * a short {@code lockReason}, the binding input buy limit per 4h window ({@code buyLimitPerWindow},
- * {@code 0} = unlimited) with {@code throttled}/{@code lowVolume} liquidity warnings, and the source
- * {@link Recipe} so a click can rebuild the full detail breakdown. A view model built by the plugin and
- * rendered by {@link ProcessingProfitPanel}.
+ * A recipe's sourcing liquidity: {@code unitsPerWindow} is how many actions the binding input buy limit
+ * allows per 4-hour GE window ({@code 0} = no finite limit / unlimited), {@code throttled} flags a
+ * money-maker capped to a small per-window throughput, and {@code lowVolume} flags a product that trades
+ * too thinly to offload reliably.
  */
 @Value
-public class RecipeRow
+public class LiquidityResult
 {
-	int itemId;
-	String product;
-	String skill;
-	long profitEach;
-	double roi;
-	long gpPerHour;
-	double xpPerHour;
-	boolean throughputKnown;
-	Double successPercent;
-	int levelReq;
-	long volume;
-	int makeableNow;
-	boolean stale;
-	boolean locked;
-	String lockReason;
-	int buyLimitPerWindow;
+	int unitsPerWindow;
 	boolean throttled;
 	boolean lowVolume;
-	Recipe recipe;
+
+	/**
+	 * Whether either warning applies.
+	 *
+	 * @return {@code true} when the recipe is throttled or low-volume
+	 */
+	public boolean hasWarning()
+	{
+		return throttled || lowVolume;
+	}
 }
