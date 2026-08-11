@@ -31,8 +31,10 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -75,6 +77,7 @@ import net.runelite.client.ui.NavigationButton;
 public class ProcessingProfitPlugin extends Plugin
 {
 	private static final int BROWSE_LEVEL = 99;
+	private static final String WATCHLIST_KEY = "watchlist";
 
 	@Inject
 	private ProcessingProfitConfig config;
@@ -97,10 +100,15 @@ public class ProcessingProfitPlugin extends Plugin
 	@Inject
 	private GePriceLookup prices;
 
+	@Inject
+	private ConfigManager configManager;
+
 	private final RecipeRepository recipes = new RecipeRepository();
 	private final ProfitCalculator calculator = new ProfitCalculator();
 	private final SourcingEngine sourcing = new SourcingEngine(calculator);
 	private final List<ShoppingRequest> shoppingSelection = new ArrayList<>();
+	private volatile Watchlist watchlist = new Watchlist();
+	private volatile Set<String> pinnedSnapshot = Collections.emptySet();
 
 	private ProcessingProfitPanel panel;
 	private NavigationButton navButton;
@@ -119,6 +127,7 @@ public class ProcessingProfitPlugin extends Plugin
 		panel.setSelectionListener(this::showDetail);
 		panel.setShoppingAddListener(this::addToShopping);
 		panel.setShoppingClearListener(this::clearShopping);
+		panel.setPinToggleListener(this::togglePin);
 		navButton = NavigationButton.builder()
 				.tooltip("Processing Profit")
 				.icon(navIcon())
@@ -152,8 +161,10 @@ public class ProcessingProfitPlugin extends Plugin
 		prices.refresh();
 		loaded = true;
 		panel.setModifierText("none (auto-detect in a later update)");
+		loadWatchlist();
 		buildBrowse();
 		refreshOnHand();
+		buildWatchlist();
 	}
 
 	private void onRefreshTick()
@@ -164,6 +175,7 @@ public class ProcessingProfitPlugin extends Plugin
 		prices.refresh();
 		buildBrowse();
 		refreshOnHand();
+		buildWatchlist();
 		rebuildShopping();
 	}
 
@@ -314,6 +326,56 @@ public class ProcessingProfitPlugin extends Plugin
 		}
 
 		rebuildShopping();
+	}
+
+	private void loadWatchlist()
+	{
+		String csv = configManager.getConfiguration(ProcessingProfitConfig.GROUP, WATCHLIST_KEY);
+		watchlist = Watchlist.parse(csv);
+		publishPinned();
+	}
+
+	private void togglePin(RecipeRow row)
+	{
+		Recipe recipe = row.getRecipe();
+		if (recipe == null || recipe.getRecipeId() == null)
+			return;
+
+		watchlist.toggle(recipe.getRecipeId());
+		configManager.setConfiguration(ProcessingProfitConfig.GROUP, WATCHLIST_KEY, watchlist.format());
+		publishPinned();
+		buildWatchlist();
+	}
+
+	private void publishPinned()
+	{
+		pinnedSnapshot = new LinkedHashSet<>(watchlist.ids());
+		panel.setPinned(pinnedSnapshot);
+	}
+
+	private void buildWatchlist()
+	{
+		if (!loaded)
+			return;
+
+		Set<String> ids = pinnedSnapshot;
+		executor.execute(() ->
+		{
+			PriceConfig cfg = priceConfig();
+			List<RecipeRow> rows = new ArrayList<>();
+			for (String id : ids)
+			{
+				Recipe recipe = recipes.byRecipeId(id);
+				if (recipe == null || recipe.primaryOutputId() == null)
+					continue;
+
+				ProfitResult result = calculator.evaluate(recipe, prices, cfg, BROWSE_LEVEL,
+						Collections.emptyList());
+				rows.add(toRow(recipe, result, -1));
+			}
+
+			panel.setWatchlistRows(rows);
+		});
 	}
 
 	private void rebuildShopping()
