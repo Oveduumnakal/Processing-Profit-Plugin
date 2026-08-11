@@ -81,6 +81,7 @@ public class ProcessingProfitPanel extends PluginPanel
 {
 	private static final int MAX_DISPLAY = 100;
 	private static final Color STALE_DOT = new Color(0xF0, 0xA3, 0x30);
+	private static final Color STAR_ON = new Color(0xF0, 0xC0, 0x40);
 	private static final String STALE_TOOLTIP =
 			"Price may be stale (from the 1h fallback or a low-volume item)";
 	private static final String[] MODE_LABELS = {"On-hand", "Buy to order", "Hybrid"};
@@ -121,7 +122,9 @@ public class ProcessingProfitPanel extends PluginPanel
 	private Consumer<SourcingMode> modeListener;
 	private Consumer<RecipeRow> selectionListener;
 	private Consumer<ShoppingRequest> shoppingAddListener;
+	private Consumer<RecipeRow> pinToggleListener;
 	private Runnable shoppingClearListener;
+	private Set<String> pinnedIds = Collections.emptySet();
 	private RecipeRow detailRow;
 	private boolean rebuildingSkills;
 
@@ -360,6 +363,43 @@ public class ProcessingProfitPanel extends PluginPanel
 	public void setShoppingClearListener(Runnable listener)
 	{
 		this.shoppingClearListener = listener;
+	}
+
+	/**
+	 * Registers a callback fired when the user pins or unpins a recipe (from a row star or the detail
+	 * view). The plugin toggles and persists the watchlist, then pushes the new pinned set back via
+	 * {@link #setPinned(Set)}.
+	 *
+	 * @param listener the callback, invoked with the toggled row
+	 */
+	public void setPinToggleListener(Consumer<RecipeRow> listener)
+	{
+		this.pinToggleListener = listener;
+	}
+
+	/**
+	 * Sets which recipe ids are pinned, so row stars and the detail toggle render the current state.
+	 *
+	 * @param ids the pinned recipe ids
+	 */
+	public void setPinned(Set<String> ids)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			pinnedIds = ids == null ? Collections.emptySet() : ids;
+			renderAll();
+		});
+	}
+
+	private void fireTogglePin(RecipeRow row)
+	{
+		if (pinToggleListener != null && row != null && row.getRecipe() != null)
+			pinToggleListener.accept(row);
+	}
+
+	private boolean isPinned(RecipeRow row)
+	{
+		return row.getRecipe() != null && pinnedIds.contains(row.getRecipe().getRecipeId());
 	}
 
 	/**
@@ -745,6 +785,9 @@ public class ProcessingProfitPanel extends PluginPanel
 		if (row.isStale())
 			panel.setToolTipText(STALE_TOOLTIP);
 
+		if (row.getRecipe() != null)
+			panel.add(pinStar(row), BorderLayout.WEST);
+
 		JLabel name = new JLabel(row.getProduct());
 		name.setFont(FontManager.getRunescapeSmallFont());
 		name.setForeground(Color.WHITE);
@@ -815,6 +858,26 @@ public class ProcessingProfitPanel extends PluginPanel
 		return (value >= 0 ? "+" : "-") + magnitude;
 	}
 
+	private JLabel pinStar(RecipeRow row)
+	{
+		boolean pinned = isPinned(row);
+		JLabel star = new JLabel(pinned ? "★" : "☆");
+		star.setFont(FontManager.getRunescapeSmallFont());
+		star.setForeground(pinned ? STAR_ON : ColorScheme.LIGHT_GRAY_COLOR);
+		star.setToolTipText(pinned ? "Unpin from watchlist" : "Pin to watchlist");
+		star.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		star.setBorder(new EmptyBorder(0, 0, 0, 4));
+		star.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				fireTogglePin(row);
+			}
+		});
+		return star;
+	}
+
 	private static JLabel staleDot()
 	{
 		JLabel dot = new JLabel("●");
@@ -872,8 +935,21 @@ public class ProcessingProfitPanel extends PluginPanel
 		if (d.isStale())
 			content.add(section("Note", Collections.singletonList(STALE_TOOLTIP)));
 
+		content.add(watchlistButton());
 		content.add(shoppingActions());
 		return scroll(content);
+	}
+
+	private JButton watchlistButton()
+	{
+		RecipeRow row = detailRow;
+		boolean pinned = row != null && isPinned(row);
+		JButton button = smallButton(pinned ? "★ Pinned" : "☆ Watchlist", e -> fireTogglePin(row));
+		button.setAlignmentX(Component.LEFT_ALIGNMENT);
+		button.setBorder(BorderFactory.createCompoundBorder(
+				new EmptyBorder(8, 2, 0, 2),
+				new EmptyBorder(3, 8, 3, 8)));
+		return button;
 	}
 
 	private JPanel shoppingActions()

@@ -53,6 +53,7 @@ public class RecipeRepository
 
 	private final Map<Integer, List<Recipe>> byOutput = new HashMap<>();
 	private final Map<String, List<Recipe>> bySkill = new HashMap<>();
+	private final Map<String, Recipe> byRecipeId = new HashMap<>();
 	private List<Recipe> all = Collections.emptyList();
 	private List<SuccessModifier> modifiers = Collections.emptyList();
 
@@ -118,6 +119,7 @@ public class RecipeRepository
 	{
 		byOutput.clear();
 		bySkill.clear();
+		byRecipeId.clear();
 		for (Recipe rec : all)
 		{
 			Integer outputId = rec.primaryOutputId();
@@ -127,6 +129,9 @@ public class RecipeRepository
 			SkillReq skill = rec.primarySkill();
 			if (skill != null && skill.getSkill() != null)
 				bySkill.computeIfAbsent(skill.getSkill(), k -> new ArrayList<>()).add(rec);
+
+			if (rec.getRecipeId() != null)
+				byRecipeId.putIfAbsent(rec.getRecipeId(), rec);
 		}
 	}
 
@@ -160,6 +165,17 @@ public class RecipeRepository
 	public List<Recipe> forSkill(String skill)
 	{
 		return bySkill.getOrDefault(skill, Collections.emptyList());
+	}
+
+	/**
+	 * The recipe with a given stable id (as used by the watchlist).
+	 *
+	 * @param recipeId the recipe id
+	 * @return the recipe, or {@code null} when no recipe has that id
+	 */
+	public Recipe byRecipeId(String recipeId)
+	{
+		return recipeId == null ? null : byRecipeId.get(recipeId);
 	}
 
 	/**
