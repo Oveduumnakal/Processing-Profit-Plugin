@@ -29,6 +29,7 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,19 +48,23 @@ import com.oveduumnakal.processingprofit.WikiPriceClient.ItemMapping;
 import lombok.extern.slf4j.Slf4j;
 
 import net.runelite.api.Client;
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Quest;
 import net.runelite.api.QuestState;
 import net.runelite.api.Skill;
+import net.runelite.api.Varbits;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -86,6 +91,8 @@ public class ProcessingProfitPlugin extends Plugin
 {
 	private static final int BROWSE_LEVEL = 99;
 	private static final String WATCHLIST_KEY = "watchlist";
+	private static final int COOKING_GAUNTLETS_ID = 775;
+	private static final Set<Integer> COOKING_CAPE_IDS = new HashSet<>(Arrays.asList(9801, 9802, 9948));
 
 	@Inject
 	private ProcessingProfitConfig config;
@@ -120,6 +127,10 @@ public class ProcessingProfitPlugin extends Plugin
 	private volatile Map<String, Integer> liveLevels = Collections.emptyMap();
 	private volatile Set<String> completedQuests = Collections.emptySet();
 	private volatile Set<String> knownQuests = Collections.emptySet();
+	private volatile List<SuccessModifier> activeModifiers = Collections.emptyList();
+	private volatile boolean detectGauntlets;
+	private volatile boolean detectCape;
+	private volatile HosidiusRange detectHosidius = HosidiusRange.NONE;
 
 	private ProcessingProfitPanel panel;
 	private NavigationButton navButton;
@@ -171,7 +182,7 @@ public class ProcessingProfitPlugin extends Plugin
 		recipes.load();
 		prices.refresh();
 		loaded = true;
-		panel.setModifierText("none (auto-detect in a later update)");
+		recomputeModifiers();
 		loadWatchlist();
 		buildBrowse();
 		refreshOnHand();
@@ -199,6 +210,12 @@ public class ProcessingProfitPlugin extends Plugin
 			refreshOnHand();
 			rebuildShopping();
 		}
+		else if (id == InventoryID.WORN)
+		{
+			snapshotDetection();
+			recomputeModifiers();
+			rebuildRecipeTabs();
+		}
 	}
 
 	@Subscribe
@@ -209,6 +226,8 @@ public class ProcessingProfitPlugin extends Plugin
 		{
 			snapshotLevels();
 			snapshotQuests();
+			snapshotDetection();
+			recomputeModifiers();
 			rebuildRecipeTabs();
 		}
 		else if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
@@ -216,8 +235,39 @@ public class ProcessingProfitPlugin extends Plugin
 			liveLevels = Collections.emptyMap();
 			completedQuests = Collections.emptySet();
 			knownQuests = Collections.emptySet();
+			detectGauntlets = false;
+			detectCape = false;
+			detectHosidius = HosidiusRange.NONE;
+			recomputeModifiers();
 			rebuildRecipeTabs();
 		}
+	}
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged event)
+	{
+		if (client.getGameState() != GameState.LOGGED_IN)
+			return;
+
+		HosidiusRange tier = detectedHosidiusTier();
+		if (tier != detectHosidius)
+		{
+			detectHosidius = tier;
+			recomputeModifiers();
+			rebuildRecipeTabs();
+		}
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (!ProcessingProfitConfig.GROUP.equals(event.getGroup())
+				|| WATCHLIST_KEY.equals(event.getKey()))
+			return;
+
+		recomputeModifiers();
+		rebuildRecipeTabs();
+		rebuildShopping();
 	}
 
 	@Subscribe
@@ -275,6 +325,61 @@ public class ProcessingProfitPlugin extends Plugin
 		knownQuests = known;
 	}
 
+	/**
+	 * Snapshots auto-detectable success modifiers from live equipment and diary varbits. Must run on the
+	 * client thread.
+	 */
+	private void snapshotDetection()
+	{
+		ItemContainer worn = client.getItemContainer(InventoryID.WORN);
+		detectGauntlets = equippedIs(worn, EquipmentInventorySlot.GLOVES, COOKING_GAUNTLETS_ID);
+		detectCape = equippedIn(worn, EquipmentInventorySlot.CAPE, COOKING_CAPE_IDS);
+		detectHosidius = detectedHosidiusTier();
+	}
+
+	private HosidiusRange detectedHosidiusTier()
+	{
+		if (client.getVarbitValue(Varbits.DIARY_KOUREND_ELITE) == 1)
+			return HosidiusRange.ELITE;
+
+		if (client.getVarbitValue(Varbits.DIARY_KOUREND_EASY) == 1)
+			return HosidiusRange.EASY;
+
+		return HosidiusRange.NONE;
+	}
+
+	private static boolean equippedIs(ItemContainer worn, EquipmentInventorySlot slot, int itemId)
+	{
+		if (worn == null)
+			return false;
+
+		Item item = worn.getItem(slot.getSlotIdx());
+		return item != null && item.getId() == itemId;
+	}
+
+	private static boolean equippedIn(ItemContainer worn, EquipmentInventorySlot slot, Set<Integer> ids)
+	{
+		if (worn == null)
+			return false;
+
+		Item item = worn.getItem(slot.getSlotIdx());
+		return item != null && ids.contains(item.getId());
+	}
+
+	/**
+	 * Resolves config toggles over live detection into the active modifier list and the status line.
+	 */
+	private void recomputeModifiers()
+	{
+		ModifierState state = Modifiers.resolveState(
+				config.jewellersChisel(), false,
+				config.cookingGauntlets(), detectGauntlets,
+				config.cookingCape(), detectCape,
+				config.hosidius(), detectHosidius);
+		activeModifiers = Modifiers.active(recipes.modifiers(), state);
+		panel.setModifierText(Modifiers.statusText(state));
+	}
+
 	private void rebuildRecipeTabs()
 	{
 		if (!loaded)
@@ -302,7 +407,7 @@ public class ProcessingProfitPlugin extends Plugin
 				continue;
 
 			ProfitResult result = calculator.evaluate(recipe, prices, cfg, primaryLevel(recipe),
-					Collections.emptyList());
+					activeModifiers);
 			if (!passesFilters(result, outId))
 				continue;
 
@@ -342,13 +447,13 @@ public class ProcessingProfitPlugin extends Plugin
 
 			int level = primaryLevel(recipe);
 			SourcingResult result = sourcing.evaluate(recipe, prices, cfg, level,
-					Collections.emptyList(), held, SourcingMode.ON_HAND,
+					activeModifiers, held, SourcingMode.ON_HAND,
 					SourcingEngine.DEFAULT_HYBRID_TARGET);
 			if (result.getMakeableNow() <= 0 || result.getProfitEach() < config.minProfit())
 				continue;
 
 			ProfitResult profit = calculator.evaluate(recipe, prices, cfg, level,
-					Collections.emptyList());
+					activeModifiers);
 			rows.add(toRow(recipe, profit, result.getMakeableNow()));
 		}
 
@@ -399,7 +504,7 @@ public class ProcessingProfitPlugin extends Plugin
 		{
 			PriceConfig cfg = priceConfig();
 			RecipeDetail detail = DetailBuilder.build(recipe, prices, cfg, primaryLevel(recipe),
-					Collections.emptyList(), calculator);
+					activeModifiers, calculator);
 			panel.showDetail(detail);
 		});
 	}
@@ -469,7 +574,7 @@ public class ProcessingProfitPlugin extends Plugin
 					continue;
 
 				ProfitResult result = calculator.evaluate(recipe, prices, cfg, primaryLevel(recipe),
-						Collections.emptyList());
+						activeModifiers);
 				rows.add(toRow(recipe, result, -1));
 			}
 
@@ -514,10 +619,10 @@ public class ProcessingProfitPlugin extends Plugin
 
 		PriceConfig cfg = priceConfig();
 		ChainValuator valuator = new ChainValuator(recipes, prices, cfg, this::levelFor,
-				Collections.emptyList());
+				activeModifiers);
 		ToIntFunction<Integer> buyLimit = this::buyLimitOf;
 		ShoppingListBuilder builder = new ShoppingListBuilder(valuator, prices, this::levelFor,
-				Collections.emptyList(), buyLimit);
+				activeModifiers, buyLimit);
 		ShoppingList list = builder.build(requests, held);
 		panel.setShoppingList(list, summary);
 	}

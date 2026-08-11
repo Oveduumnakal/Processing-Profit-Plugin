@@ -52,6 +52,14 @@ public interface ProcessingProfitConfig extends Config
 	)
 	String displaySection = "display";
 
+	/** Success-boosting gear/diaries: auto-detected by default, overridable per modifier. */
+	@ConfigSection(
+		name = "Success modifiers",
+		description = "Gear and diary bonuses that change success/yield. Auto-detected unless overridden.",
+		position = 2
+	)
+	String modifierSection = "modifiers";
+
 	/**
 	 * The default sourcing assumption profits are computed under. The sidebar's selector overrides this
 	 * for the session.
@@ -206,5 +214,74 @@ public interface ProcessingProfitConfig extends Config
 	default boolean showTooltip()
 	{
 		return true;
+	}
+
+	/**
+	 * Whether the jeweller's chisel gem-cutting bonus applies. Not auto-detectable, so {@code AUTO}
+	 * behaves as off until forced on.
+	 *
+	 * @return the jeweller's chisel toggle
+	 */
+	@ConfigItem(
+		keyName = "modJewellersChisel",
+		name = "Jeweller's chisel",
+		description = "Boosts semi-precious gem cut chance and doubling. Auto-detect can't see it — set On to apply.",
+		section = modifierSection,
+		position = 0
+	)
+	default ModifierToggle jewellersChisel()
+	{
+		return ModifierToggle.AUTO;
+	}
+
+	/**
+	 * Whether the cooking gauntlets not-burn bonus applies (auto-detects equipped gauntlets).
+	 *
+	 * @return the cooking gauntlets toggle
+	 */
+	@ConfigItem(
+		keyName = "modCookingGauntlets",
+		name = "Cooking gauntlets",
+		description = "Lowers the burn-stop level on lobster/swordfish/monkfish/shark/anglerfish.",
+		section = modifierSection,
+		position = 1
+	)
+	default ModifierToggle cookingGauntlets()
+	{
+		return ModifierToggle.AUTO;
+	}
+
+	/**
+	 * Whether the cooking cape never-burn bonus applies (auto-detects an equipped cooking/max cape).
+	 *
+	 * @return the cooking cape toggle
+	 */
+	@ConfigItem(
+		keyName = "modCookingCape",
+		name = "Cooking cape",
+		description = "Never burn any food (auto-detects an equipped cooking or max cape).",
+		section = modifierSection,
+		position = 2
+	)
+	default ModifierToggle cookingCape()
+	{
+		return ModifierToggle.AUTO;
+	}
+
+	/**
+	 * Which Hosidius cooking-range not-burn tier applies (auto-detects the Kourend &amp; Kebos diary).
+	 *
+	 * @return the Hosidius range setting
+	 */
+	@ConfigItem(
+		keyName = "modHosidius",
+		name = "Hosidius range",
+		description = "Kourend & Kebos diary not-burn bonus: auto-detect, or force a tier.",
+		section = modifierSection,
+		position = 3
+	)
+	default HosidiusRange hosidius()
+	{
+		return HosidiusRange.AUTO;
 	}
 }
