@@ -62,6 +62,9 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
+import net.runelite.api.events.WidgetClosed;
+import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -72,6 +75,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 
 /**
  * Entry point: loads the bundled recipe catalog, keeps live GE prices fresh, and drives the sidebar. On
@@ -120,6 +124,9 @@ public class ProcessingProfitPlugin extends Plugin
 	@Inject
 	private ConfigManager configManager;
 
+	@Inject
+	private OverlayManager overlayManager;
+
 	private final RecipeRepository recipes = new RecipeRepository();
 	private final Map<Integer, Map<Integer, Integer>> containerCache = new ConcurrentHashMap<>();
 	private final ProfitCalculator calculator = new ProfitCalculator();
@@ -136,9 +143,12 @@ public class ProcessingProfitPlugin extends Plugin
 	private volatile HosidiusRange detectHosidius = HosidiusRange.NONE;
 
 	private ProcessingProfitPanel panel;
+	private ProcessingProfitOverlay overlay;
 	private NavigationButton navButton;
 	private ScheduledFuture<?> refreshFuture;
 	private IronmanValuation ironmanLens;
+	private volatile List<RecipeRow> onHandSnapshot = Collections.emptyList();
+	private volatile boolean bankOpen;
 	private volatile boolean loaded;
 
 	@Override
@@ -161,6 +171,9 @@ public class ProcessingProfitPlugin extends Plugin
 				.build();
 		clientToolbar.addNavigation(navButton);
 
+		overlay = new ProcessingProfitOverlay(config, () -> onHandSnapshot, () -> bankOpen);
+		overlayManager.add(overlay);
+
 		executor.execute(this::initialLoad);
 		int seconds = Math.max(10, config.refreshSeconds());
 		refreshFuture = executor.scheduleWithFixedDelay(this::onRefreshTick, seconds, seconds,
@@ -174,6 +187,12 @@ public class ProcessingProfitPlugin extends Plugin
 		{
 			refreshFuture.cancel(true);
 			refreshFuture = null;
+		}
+
+		if (overlay != null)
+		{
+			overlayManager.remove(overlay);
+			overlay = null;
 		}
 
 		clientToolbar.removeNavigation(navButton);
@@ -225,6 +244,20 @@ public class ProcessingProfitPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event)
+	{
+		if (event.getGroupId() == InterfaceID.BANKMAIN)
+			bankOpen = true;
+	}
+
+	@Subscribe
+	public void onWidgetClosed(WidgetClosed event)
+	{
+		if (event.getGroupId() == InterfaceID.BANKMAIN)
+			bankOpen = false;
+	}
+
+	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		GameState state = event.getGameState();
@@ -239,6 +272,7 @@ public class ProcessingProfitPlugin extends Plugin
 		else if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
 		{
 			containerCache.clear();
+			bankOpen = false;
 			liveLevels = Collections.emptyMap();
 			completedQuests = Collections.emptySet();
 			knownQuests = Collections.emptySet();
@@ -514,7 +548,9 @@ public class ProcessingProfitPlugin extends Plugin
 			rows.add(toRow(recipe, profit, result.getMakeableNow()));
 		}
 
-		panel.setOnHandRows(dedupeByProduct(rows));
+		List<RecipeRow> deduped = dedupeByProduct(rows);
+		onHandSnapshot = deduped;
+		panel.setOnHandRows(deduped);
 	}
 
 	/**
