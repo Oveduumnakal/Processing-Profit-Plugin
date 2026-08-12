@@ -29,41 +29,26 @@ import java.util.List;
 import lombok.Value;
 
 /**
- * The full, click-through breakdown behind one recipe's headline profit: the consumed input lines and
- * their total cost, the non-consumed {@code tools}, the output lines with their pre-tax gross and the GE
- * {@code tax}, the success-weighted {@code expectedNet} and the four throughput dimensions. When the
- * recipe is {@code failCapable} it also carries the success breakdown ({@code baseChance} at the level
- * &rarr; {@code finalChance} after {@code modifierNotes}, the {@code yieldMult}, and the
- * {@code failureLabel}). {@code breakEven} lists the highest per-unit price each input can reach while
- * the recipe still breaks even. {@code chainTree} is the recursive make-or-buy tree over the inputs. A
- * pure view-model built by {@link DetailBuilder}.
+ * One node in the make-or-buy tree shown in the detail view: an input {@code label} and per-craft
+ * {@code qty}, whether the cheapest source is to {@code viaBuy} it or craft it, and the three costs so
+ * the view can highlight the chosen option and show the alternative &mdash; the {@code chosenCost}, the
+ * {@code buyCost} and the {@code craftCost} (each {@code -1} when that option is unavailable). When the
+ * cheapest source is to craft it, {@code children} holds that recipe's inputs recursed the same way;
+ * {@code truncated} is {@code true} when a craft path existed but display recursion stopped at the depth
+ * cap or a cycle. A pure view-model built by {@link ChainTreeBuilder}.
  */
 @Value
-public class RecipeDetail
+public class ChainNode
 {
-	String product;
-	int itemId;
-	List<CostLine> inputs;
-	List<String> tools;
-	long inputCost;
-	List<CostLine> outputs;
-	long grossOutput;
-	long tax;
-	long expectedNet;
-	long profitEach;
-	double roi;
-	boolean throughputKnown;
-	long gpPerHour;
-	double xpPerHour;
-	double profitPerXp;
-	int level;
-	boolean failCapable;
-	Double baseChance;
-	Double finalChance;
-	double yieldMult;
-	List<String> modifierNotes;
-	String failureLabel;
-	List<CostLine> breakEven;
-	boolean stale;
-	List<ChainNode> chainTree;
+	/** Cost sentinel for an unavailable buy/craft/chosen option. */
+	public static final long UNAVAILABLE = -1L;
+
+	String label;
+	int qty;
+	boolean viaBuy;
+	long chosenCost;
+	long buyCost;
+	long craftCost;
+	boolean truncated;
+	List<ChainNode> children;
 }

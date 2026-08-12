@@ -24,10 +24,12 @@
  */
 package com.oveduumnakal.processingprofit;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.ToIntFunction;
 
 import org.junit.Test;
 
@@ -44,6 +46,15 @@ import static org.junit.Assert.assertTrue;
 public class DetailBuilderTest
 {
 	private final ProfitCalculator calc = new ProfitCalculator();
+	private final ToIntFunction<String> level99 = s -> 99;
+
+	private ChainValuator valuator(Recipe rec, PriceLookup prices)
+	{
+		RecipeRepository repo = new RecipeRepository();
+		repo.setAll(new ArrayList<>(Collections.singletonList(rec)));
+		return new ChainValuator(repo, prices, new PriceConfig(false, 1.0), level99,
+				Collections.emptyList());
+	}
 
 	/** A map-backed {@link PriceLookup} test double. */
 	private static final class MapPrices implements PriceLookup
@@ -100,7 +111,7 @@ public class DetailBuilderTest
 		MapPrices prices = new MapPrices().put(3, 100, 100).put(1, 300, 200);
 
 		RecipeDetail d = DetailBuilder.build(rec, prices, new PriceConfig(false, 1.0), 99,
-				Collections.emptyList(), calc);
+				Collections.emptyList(), calc, valuator(rec, prices));
 
 		assertEquals("Widget", d.getProduct());
 		assertEquals(1, d.getInputs().size());
@@ -126,7 +137,7 @@ public class DetailBuilderTest
 		MapPrices prices = new MapPrices().put(3, 100, 100).put(1, 300, 200);
 
 		RecipeDetail d = DetailBuilder.build(rec, prices, new PriceConfig(false, 1.0), 30,
-				Collections.emptyList(), calc);
+				Collections.emptyList(), calc, valuator(rec, prices));
 
 		assertTrue(d.isFailCapable());
 		assertEquals(burn.chance(30), d.getBaseChance(), 1e-9);

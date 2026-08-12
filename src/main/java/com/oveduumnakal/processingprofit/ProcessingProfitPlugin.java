@@ -581,8 +581,11 @@ public class ProcessingProfitPlugin extends Plugin
 		executor.execute(() ->
 		{
 			PriceConfig cfg = priceConfig();
-			RecipeDetail detail = DetailBuilder.build(recipe, activeLens(), cfg, primaryLevel(recipe),
-					activeModifiers, calculator);
+			PriceLookup lens = activeLens();
+			ChainValuator valuator = new ChainValuator(recipes, lens, cfg, this::levelFor,
+					activeModifiers);
+			RecipeDetail detail = DetailBuilder.build(recipe, lens, cfg, primaryLevel(recipe),
+					activeModifiers, calculator, valuator);
 			panel.showDetail(detail);
 		});
 	}
