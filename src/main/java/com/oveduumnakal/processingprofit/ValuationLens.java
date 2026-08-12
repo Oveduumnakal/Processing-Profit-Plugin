@@ -26,13 +26,13 @@ package com.oveduumnakal.processingprofit;
 
 /**
  * How items are priced: {@code GE_MARKET} (inputs at GE buy, outputs at GE sell, tax/limits/volume
- * apply) or {@code IRONMAN} (outputs by alch/shop, inputs by shop/gather) &mdash; a v2 placeholder that
- * currently behaves as GE market.
+ * apply) or {@code IRONMAN} (outputs by high alch net of the nature rune or store value, inputs by store
+ * value, with GE tax/buy-limits/volume gating disabled) &mdash; see {@link IronmanValuation}.
  */
 public enum ValuationLens
 {
 	GE_MARKET("GE market"),
-	IRONMAN("Ironman (v2)");
+	IRONMAN("Ironman (alch/shop)");
 
 	private final String label;
 

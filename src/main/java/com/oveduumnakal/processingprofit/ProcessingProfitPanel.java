@@ -110,8 +110,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static final int MEMBERS_P2P = 2;
 
 	private final JComboBox<String> modeSelector = new JComboBox<>(MODE_LABELS);
-	private final JComboBox<String> valuationSelector =
-			new JComboBox<>(new String[]{"GE market", "Ironman (v2)"});
+	private final JComboBox<String> valuationSelector = new JComboBox<>(valuationLabels());
 	private final JComboBox<String> skillSelector = new JComboBox<>(new String[]{ALL_SKILLS});
 	private final JComboBox<String> gatingSelector =
 			new JComboBox<>(new String[]{"Hide locked", "Grey locked", "Show all"});
@@ -145,6 +144,8 @@ public class ProcessingProfitPanel extends PluginPanel
 	private MaterialTab shoppingTab;
 
 	private Consumer<SourcingMode> modeListener;
+	private Consumer<ValuationLens> valuationListener;
+	private boolean syncingLens;
 	private Consumer<RecipeRow> selectionListener;
 	private Consumer<ShoppingRequest> shoppingAddListener;
 	private Consumer<RecipeRow> pinToggleListener;
@@ -196,6 +197,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private void wireControls()
 	{
 		modeSelector.addActionListener(e -> fireModeChanged());
+		valuationSelector.addActionListener(e -> fireValuationChanged());
 		sortSelector.addActionListener(e -> renderAll());
 		densitySelector.addActionListener(e -> renderAll());
 		gatingSelector.addActionListener(e -> renderAll());
@@ -432,6 +434,51 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		if (modeListener != null)
 			modeListener.accept(selectedMode());
+	}
+
+	private static String[] valuationLabels()
+	{
+		ValuationLens[] lenses = ValuationLens.values();
+		String[] labels = new String[lenses.length];
+		for (int i = 0; i < lenses.length; i++)
+			labels[i] = lenses[i].toString();
+
+		return labels;
+	}
+
+	/**
+	 * Registers a callback fired when the valuation lens changes, so the plugin can switch how items are
+	 * priced and rebuild.
+	 *
+	 * @param listener the callback, invoked with the newly selected lens
+	 */
+	public void setValuationListener(Consumer<ValuationLens> listener)
+	{
+		this.valuationListener = listener;
+	}
+
+	/**
+	 * Sets the selected valuation lens without firing the change listener, so the selector can be synced
+	 * to the current config value.
+	 *
+	 * @param lens the lens to show as selected
+	 */
+	public void setValuationLens(ValuationLens lens)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			syncingLens = true;
+			valuationSelector.setSelectedIndex(lens.ordinal());
+			syncingLens = false;
+		});
+	}
+
+	private void fireValuationChanged()
+	{
+		if (syncingLens || valuationListener == null)
+			return;
+
+		valuationListener.accept(ValuationLens.values()[valuationSelector.getSelectedIndex()]);
 	}
 
 	private void fireSelection(RecipeRow row)
