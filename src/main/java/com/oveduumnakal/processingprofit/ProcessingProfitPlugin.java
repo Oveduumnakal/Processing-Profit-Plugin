@@ -33,10 +33,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -119,6 +121,7 @@ public class ProcessingProfitPlugin extends Plugin
 	private ConfigManager configManager;
 
 	private final RecipeRepository recipes = new RecipeRepository();
+	private final Map<Integer, Map<Integer, Integer>> containerCache = new ConcurrentHashMap<>();
 	private final ProfitCalculator calculator = new ProfitCalculator();
 	private final SourcingEngine sourcing = new SourcingEngine(calculator);
 	private final List<ShoppingRequest> shoppingSelection = new ArrayList<>();
@@ -141,11 +144,7 @@ public class ProcessingProfitPlugin extends Plugin
 	protected void startUp()
 	{
 		panel = new ProcessingProfitPanel();
-		panel.setModeListener(mode ->
-		{
-			refreshOnHand();
-			rebuildShopping();
-		});
+		panel.setModeListener(mode -> rebuildShopping());
 		panel.setSelectionListener(this::showDetail);
 		panel.setShoppingAddListener(this::addToShopping);
 		panel.setShoppingClearListener(this::clearShopping);
@@ -207,6 +206,9 @@ public class ProcessingProfitPlugin extends Plugin
 		int id = event.getContainerId();
 		if (id == InventoryID.INV || id == InventoryID.BANK)
 		{
+			if (id == InventoryID.BANK)
+				captureContainer(id, event.getItemContainer());
+
 			refreshOnHand();
 			rebuildShopping();
 		}
@@ -232,6 +234,7 @@ public class ProcessingProfitPlugin extends Plugin
 		}
 		else if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
 		{
+			containerCache.clear();
 			liveLevels = Collections.emptyMap();
 			completedQuests = Collections.emptySet();
 			knownQuests = Collections.emptySet();
@@ -414,7 +417,45 @@ public class ProcessingProfitPlugin extends Plugin
 			rows.add(toRow(recipe, result, -1));
 		}
 
-		panel.setBrowseRows(rows);
+		panel.setBrowseRows(dedupeByProduct(rows));
+	}
+
+	/**
+	 * Collapses rows that share a primary output item to a single best-profit row, so the same product
+	 * made by several recipes shows once instead of duplicating (e.g. "Mystic fire staff").
+	 *
+	 * @param rows the rows to collapse
+	 * @return one row per output item, keeping the highest profit per action
+	 */
+	private static List<RecipeRow> dedupeByProduct(List<RecipeRow> rows)
+	{
+		Map<Integer, RecipeRow> best = new LinkedHashMap<>();
+		Map<Integer, Integer> counts = new HashMap<>();
+		Map<Integer, Long> mins = new HashMap<>();
+		Map<Integer, Long> maxes = new HashMap<>();
+		for (RecipeRow row : rows)
+		{
+			int id = row.getItemId();
+			counts.merge(id, 1, Integer::sum);
+			mins.merge(id, row.getProfitEach(), Math::min);
+			maxes.merge(id, row.getProfitEach(), Math::max);
+			RecipeRow existing = best.get(id);
+			if (existing == null || row.getProfitEach() > existing.getProfitEach())
+				best.put(id, row);
+		}
+
+		List<RecipeRow> out = new ArrayList<>(best.size());
+		for (RecipeRow winner : best.values())
+		{
+			int id = winner.getItemId();
+			out.add(winner.toBuilder()
+					.recipeCount(counts.get(id))
+					.profitMin(mins.get(id))
+					.profitMax(maxes.get(id))
+					.build());
+		}
+
+		return out;
 	}
 
 	private void refreshOnHand()
@@ -457,14 +498,35 @@ public class ProcessingProfitPlugin extends Plugin
 			rows.add(toRow(recipe, profit, result.getMakeableNow()));
 		}
 
-		panel.setOnHandRows(rows);
+		panel.setOnHandRows(dedupeByProduct(rows));
+	}
+
+	/**
+	 * Snapshots the bank's canonicalised counts into {@link #containerCache}. Called on the client thread
+	 * from {@code onItemContainerChanged} so the last-seen bank contents survive the bank interface
+	 * unloading &mdash; reading the live bank container after it closes yields an empty set, which would
+	 * otherwise blank the On-hand tab on the next refresh tick. The inventory is always read live (it
+	 * stays valid the whole session), so only the bank needs caching.
+	 *
+	 * @param id        the container id (bank)
+	 * @param container the changed container, may be {@code null}
+	 */
+	private void captureContainer(int id, ItemContainer container)
+	{
+		Map<Integer, Integer> counts = new HashMap<>();
+		addContainer(counts, container);
+		containerCache.put(id, counts);
 	}
 
 	private Map<Integer, Integer> readHeld()
 	{
 		Map<Integer, Integer> held = new HashMap<>();
 		addContainer(held, client.getItemContainer(InventoryID.INV));
-		addContainer(held, client.getItemContainer(InventoryID.BANK));
+		Map<Integer, Integer> bank = containerCache.get(InventoryID.BANK);
+		if (bank != null)
+			for (Map.Entry<Integer, Integer> entry : bank.entrySet())
+				held.merge(entry.getKey(), entry.getValue(), Integer::sum);
+
 		return held;
 	}
 
@@ -643,7 +705,7 @@ public class ProcessingProfitPlugin extends Plugin
 				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
 				success, levelReq, volume, makeable, result.isStalePrices(), gate.isLocked(),
 				gate.getReason(), liq.getUnitsPerWindow(), liq.isThrottled(), liq.isLowVolume(),
-				recipe.isMembers(), recipe);
+				recipe.isMembers(), 1, result.getProfitEach(), result.getProfitEach(), recipe);
 	}
 
 	private int buyLimitOf(int itemId)

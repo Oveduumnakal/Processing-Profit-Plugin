@@ -12,6 +12,8 @@ nbproject/
 # Local planning + cross-session handoff notes — never commit.
 HANDOFF.md
 PLAN.md
+Issues.MD
+Issues.md
 
 # Python bytecode from tools/
 __pycache__/

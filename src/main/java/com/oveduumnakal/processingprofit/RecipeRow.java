@@ -24,6 +24,7 @@
  */
 package com.oveduumnakal.processingprofit;
 
+import lombok.Builder;
 import lombok.Value;
 
 /**
@@ -35,10 +36,13 @@ import lombok.Value;
  * a short {@code lockReason}, the binding input buy limit per 4h window ({@code buyLimitPerWindow},
  * {@code 0} = unlimited) with {@code throttled}/{@code lowVolume} liquidity warnings, whether the recipe
  * is {@code members}-only, and the source
- * {@link Recipe} so a click can rebuild the full detail breakdown. A view model built by the plugin and
- * rendered by {@link ProcessingProfitPanel}.
+ * {@link Recipe} so a click can rebuild the full detail breakdown. When several recipes make the same
+ * product they are collapsed to one row (see the plugin's {@code dedupeByProduct}): {@code recipeCount}
+ * is how many were folded in and {@code profitMin}/{@code profitMax} bound their per-action profit so the
+ * card can show a range. A view model built by the plugin and rendered by {@link ProcessingProfitPanel}.
  */
 @Value
+@Builder(toBuilder = true)
 public class RecipeRow
 {
 	int itemId;
@@ -60,5 +64,8 @@ public class RecipeRow
 	boolean throttled;
 	boolean lowVolume;
 	boolean members;
+	int recipeCount;
+	long profitMin;
+	long profitMax;
 	Recipe recipe;
 }
