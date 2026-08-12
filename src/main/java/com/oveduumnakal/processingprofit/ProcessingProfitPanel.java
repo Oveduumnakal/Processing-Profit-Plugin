@@ -31,6 +31,7 @@ import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GridBagLayout;
 import java.awt.Rectangle;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
@@ -38,8 +39,10 @@ import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
@@ -85,6 +88,11 @@ public class ProcessingProfitPanel extends PluginPanel
 {
 	private static final int MAX_DISPLAY = 100;
 	private static final Color STALE_DOT = new Color(0xF0, 0xA3, 0x30);
+	private static final Color WARN_TRIANGLE = new Color(0xD0, 0x42, 0x42);
+	private static final Color SP_HIGH = new Color(100, 220, 100);
+	private static final Color SP_LOW = new Color(220, 100, 100);
+	private static final Color SP_GOLD = new Color(255, 200, 0);
+	private static final Color SP_MUTED = new Color(150, 150, 150);
 	private static final Color STAR_ON = new Color(0xF0, 0xC0, 0x40);
 	private static final Color LOCKED_FG = new Color(0x80, 0x80, 0x80);
 	private static final String STALE_TOOLTIP =
@@ -120,6 +128,9 @@ public class ProcessingProfitPanel extends PluginPanel
 	private final JPanel onHandRows = listPanel();
 	private final JPanel watchlistRows = listPanel();
 	private final JPanel shoppingRows = listPanel();
+
+	private final Map<JPanel, WidthTrackingPanel> wrappers = new HashMap<>();
+	private final Map<JPanel, Integer> tabLimit = new HashMap<>();
 
 	private List<RecipeRow> browseData = Collections.emptyList();
 	private List<RecipeRow> onHandData = Collections.emptyList();
@@ -293,11 +304,11 @@ public class ProcessingProfitPanel extends PluginPanel
 		return panel;
 	}
 
-	private static JScrollPane scroll(JPanel rows)
+	private JScrollPane scroll(JPanel rows)
 	{
-		WidthTrackingPanel wrap = new WidthTrackingPanel();
+		WidthTrackingPanel wrap = new WidthTrackingPanel(rows);
 		wrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		wrap.add(rows, BorderLayout.NORTH);
+		wrappers.put(rows, wrap);
 
 		JScrollPane scroll = new JScrollPane(wrap,
 				ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -314,12 +325,34 @@ public class ProcessingProfitPanel extends PluginPanel
 	/**
 	 * A scroll view whose width tracks the viewport so rows fill the panel width and their labels
 	 * ellipsize inside it instead of overflowing past the right edge (there is no horizontal scrollbar).
+	 * It normally pins the row list to the top; when a tab is empty it swaps to a single centered
+	 * component and reports that it tracks the viewport height too, so the "Nothing to show" placeholder
+	 * centres both horizontally and vertically.
 	 */
 	private static final class WidthTrackingPanel extends JPanel implements Scrollable
 	{
-		private WidthTrackingPanel()
+		private final JPanel rows;
+		private boolean fillHeight;
+
+		private WidthTrackingPanel(JPanel rows)
 		{
 			super(new BorderLayout());
+			this.rows = rows;
+			add(rows, BorderLayout.NORTH);
+		}
+
+		private void showList()
+		{
+			removeAll();
+			add(rows, BorderLayout.NORTH);
+			fillHeight = false;
+		}
+
+		private void showCentered(Component centered)
+		{
+			removeAll();
+			add(centered, BorderLayout.CENTER);
+			fillHeight = true;
 		}
 
 		@Override
@@ -349,7 +382,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		@Override
 		public boolean getScrollableTracksViewportHeight()
 		{
-			return false;
+			return fillHeight;
 		}
 	}
 
@@ -486,6 +519,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			browseData = rows == null ? Collections.emptyList() : rows;
+			tabLimit.remove(browseRows);
 			rebuildSkillOptions();
 			renderAll();
 		});
@@ -501,6 +535,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			onHandData = rows == null ? Collections.emptyList() : rows;
+			tabLimit.remove(onHandRows);
 			renderTab(onHandRows, onHandData);
 		});
 	}
@@ -515,6 +550,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			watchlistData = rows == null ? Collections.emptyList() : rows;
+			tabLimit.remove(watchlistRows);
 			renderTab(watchlistRows, watchlistData);
 		});
 	}
@@ -710,24 +746,65 @@ public class ProcessingProfitPanel extends PluginPanel
 	private void renderTab(JPanel container, List<RecipeRow> data)
 	{
 		container.removeAll();
+		WidthTrackingPanel wrap = wrappers.get(container);
 		List<RecipeRow> view = filterAndSort(data);
 		if (view.isEmpty())
 		{
-			container.add(placeholder(data.isEmpty() ? "Nothing to show yet." : "No matches."));
+			String message = data.isEmpty() ? "Nothing to show yet." : "No matches.";
+			if (wrap != null)
+				wrap.showCentered(centeredPlaceholder(message));
+			else
+				container.add(placeholder(message));
 		}
 		else
 		{
+			if (wrap != null)
+				wrap.showList();
+
 			boolean compact = densitySelector.getSelectedIndex() == 1;
-			int shown = Math.min(view.size(), MAX_DISPLAY);
+			int limit = tabLimit.getOrDefault(container, MAX_DISPLAY);
+			int shown = Math.min(view.size(), limit);
 			for (int i = 0; i < shown; i++)
 				container.add(rowComponent(view.get(i), compact));
 
 			if (view.size() > shown)
-				container.add(placeholder("… and " + (view.size() - shown) + " more"));
+				container.add(moreRow(container, data, view.size() - shown));
 		}
 
 		container.revalidate();
 		container.repaint();
+		if (wrap != null)
+		{
+			wrap.revalidate();
+			wrap.repaint();
+		}
+	}
+
+	private JComponent moreRow(JPanel container, List<RecipeRow> data, int remaining)
+	{
+		JLabel more = new JLabel("… and " + remaining + " more — click to show all");
+		more.setForeground(ColorScheme.BRAND_ORANGE);
+		more.setFont(FontManager.getRunescapeSmallFont());
+		more.setBorder(new EmptyBorder(8, 2, 8, 2));
+		more.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		more.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				tabLimit.put(container, Integer.MAX_VALUE);
+				renderTab(container, data);
+			}
+		});
+		return more;
+	}
+
+	private static JPanel centeredPlaceholder(String text)
+	{
+		JPanel wrap = new JPanel(new GridBagLayout());
+		wrap.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		wrap.add(placeholder(text));
+		return wrap;
 	}
 
 	private List<RecipeRow> filterAndSort(List<RecipeRow> data)
@@ -862,30 +939,106 @@ public class ProcessingProfitPanel extends PluginPanel
 		if (tip != null)
 			panel.setToolTipText(tip);
 
-		JPanel leading = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
-		leading.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		if (row.getRecipe() != null)
-			leading.add(pinStar(row, greyed));
+		if (compact)
+			fillCompactRow(panel, row, greyed);
+		else
+			fillCardRow(panel, row, greyed);
 
-		if (row.isStale())
-			leading.add(staleDot(greyed));
+		capHeight(panel);
+		return panel;
+	}
 
-		panel.add(leading, BorderLayout.WEST);
-
+	private void fillCompactRow(JPanel panel, RecipeRow row, boolean greyed)
+	{
 		JLabel name = new JLabel(row.getProduct());
 		name.setFont(FontManager.getRunescapeSmallFont());
 		name.setForeground(greyed ? LOCKED_FG : Color.WHITE);
 		panel.add(name, BorderLayout.CENTER);
 
-		JLabel profit = new JLabel(signed(row.getProfitEach()));
-		profit.setFont(FontManager.getRunescapeSmallFont());
-		profit.setForeground(greyed ? LOCKED_FG : (row.getProfitEach() >= 0
-				? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR));
-		profit.setHorizontalAlignment(SwingConstants.RIGHT);
-		panel.add(profit, BorderLayout.EAST);
+		JPanel trailing = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		trailing.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		trailing.add(profitLabel(row, greyed, false));
+		if (row.getRecipe() != null)
+			trailing.add(pinStar(row, greyed));
 
-		capHeight(panel);
-		return panel;
+		panel.add(trailing, BorderLayout.EAST);
+	}
+
+	private void fillCardRow(JPanel panel, RecipeRow row, boolean greyed)
+	{
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		top.setAlignmentX(Component.LEFT_ALIGNMENT);
+		JLabel name = new JLabel(row.getProduct());
+		name.setFont(FontManager.getRunescapeSmallFont());
+		name.setForeground(greyed ? LOCKED_FG : Color.WHITE);
+		top.add(name, BorderLayout.CENTER);
+		if (row.getRecipe() != null)
+		{
+			JPanel starWrap = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+			starWrap.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			starWrap.add(pinStar(row, greyed));
+			top.add(starWrap, BorderLayout.EAST);
+		}
+
+		capHeight(top);
+
+		JPanel bottom = new JPanel(new BorderLayout(6, 0));
+		bottom.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		bottom.setAlignmentX(Component.LEFT_ALIGNMENT);
+		bottom.setBorder(new EmptyBorder(2, 0, 0, 0));
+		bottom.add(profitLabel(row, greyed, true), BorderLayout.WEST);
+
+		JPanel meta = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		meta.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		if (row.getRecipeCount() > 1)
+			meta.add(rcpsLabel(row, greyed));
+
+		if (row.isStale())
+			meta.add(staleDot(greyed));
+
+		if (row.isThrottled() || row.isLowVolume())
+			meta.add(warnTriangle(row, greyed));
+
+		bottom.add(meta, BorderLayout.EAST);
+		capHeight(bottom);
+
+		JPanel stack = new JPanel();
+		stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
+		stack.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+		stack.add(top);
+		stack.add(bottom);
+		panel.add(stack, BorderLayout.CENTER);
+	}
+
+	private JLabel profitLabel(RecipeRow row, boolean greyed, boolean range)
+	{
+		String text = range && row.getProfitMin() != row.getProfitMax()
+				? signed(row.getProfitMin()) + " to " + signed(row.getProfitMax())
+				: signed(row.getProfitEach());
+		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(greyed ? LOCKED_FG : (row.getProfitEach() >= 0
+				? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR));
+		return label;
+	}
+
+	private static JLabel rcpsLabel(RecipeRow row, boolean greyed)
+	{
+		JLabel label = new JLabel("Rcps: " + row.getRecipeCount());
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(greyed ? LOCKED_FG : ColorScheme.LIGHT_GRAY_COLOR);
+		label.setToolTipText(row.getRecipeCount() + " recipes make this item");
+		return label;
+	}
+
+	private static JLabel warnTriangle(RecipeRow row, boolean greyed)
+	{
+		JLabel triangle = new JLabel("▲");
+		triangle.setFont(FontManager.getRunescapeSmallFont());
+		triangle.setForeground(greyed ? LOCKED_FG : WARN_TRIANGLE);
+		triangle.setToolTipText(warningText(row));
+		return triangle;
 	}
 
 	private static String signed(long value)
@@ -1007,8 +1160,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		content.add(backButton());
 		content.add(detailTitle(d.getProduct()));
 		content.add(headline(signed(d.getProfitEach()) + " /ea",
-				d.getProfitEach() >= 0
-						? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR));
+				d.getProfitEach() >= 0 ? SP_HIGH : SP_LOW));
 
 		List<String> dims = new ArrayList<>();
 		dims.add("GP/hr: " + (d.isThroughputKnown() ? num(d.getGpPerHour()) : "n/a"));
@@ -1055,8 +1207,8 @@ public class ProcessingProfitPanel extends PluginPanel
 		panel.setBorder(new EmptyBorder(8, 2, 0, 2));
 
 		JLabel header = new JLabel("Shopping list");
-		header.setFont(FontManager.getRunescapeSmallFont());
-		header.setForeground(ColorScheme.BRAND_ORANGE);
+		header.setFont(FontManager.getRunescapeBoldFont());
+		header.setForeground(SP_GOLD);
 		header.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(header);
 
@@ -1125,8 +1277,8 @@ public class ProcessingProfitPanel extends PluginPanel
 		panel.setBorder(new EmptyBorder(6, 2, 0, 2));
 
 		JLabel header = new JLabel(title);
-		header.setFont(FontManager.getRunescapeSmallFont());
-		header.setForeground(ColorScheme.BRAND_ORANGE);
+		header.setFont(FontManager.getRunescapeBoldFont());
+		header.setForeground(SP_GOLD);
 		header.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(header);
 
@@ -1144,9 +1296,9 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		JLabel label = new JLabel(text);
 		label.setFont(FontManager.getRunescapeSmallFont());
-		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		label.setForeground(SP_MUTED);
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
-		label.setBorder(new EmptyBorder(1, 6, 0, 0));
+		label.setBorder(new EmptyBorder(2, 6, 0, 0));
 		return label;
 	}
 
