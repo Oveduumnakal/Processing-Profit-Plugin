@@ -138,17 +138,21 @@ public class ProcessingProfitPlugin extends Plugin
 	private ProcessingProfitPanel panel;
 	private NavigationButton navButton;
 	private ScheduledFuture<?> refreshFuture;
+	private IronmanValuation ironmanLens;
 	private volatile boolean loaded;
 
 	@Override
 	protected void startUp()
 	{
+		ironmanLens = new IronmanValuation(prices, prices::mapping);
 		panel = new ProcessingProfitPanel();
 		panel.setModeListener(mode -> rebuildShopping());
 		panel.setSelectionListener(this::showDetail);
 		panel.setShoppingAddListener(this::addToShopping);
 		panel.setShoppingClearListener(this::clearShopping);
 		panel.setPinToggleListener(this::togglePin);
+		panel.setValuationListener(this::onValuationSelected);
+		panel.setValuationLens(config.valuationLens());
 		navButton = NavigationButton.builder()
 				.tooltip("Processing Profit")
 				.icon(navIcon())
@@ -268,9 +272,21 @@ public class ProcessingProfitPlugin extends Plugin
 				|| WATCHLIST_KEY.equals(event.getKey()))
 			return;
 
+		panel.setValuationLens(config.valuationLens());
 		recomputeModifiers();
 		rebuildRecipeTabs();
 		rebuildShopping();
+	}
+
+	/**
+	 * Persists the sidebar's chosen valuation lens to config; the resulting {@code onConfigChanged}
+	 * rebuilds every tab through the new lens.
+	 *
+	 * @param lens the newly selected lens
+	 */
+	private void onValuationSelected(ValuationLens lens)
+	{
+		configManager.setConfiguration(ProcessingProfitConfig.GROUP, "valuationLens", lens);
 	}
 
 	@Subscribe
@@ -409,7 +425,7 @@ public class ProcessingProfitPlugin extends Plugin
 			if (outId == null)
 				continue;
 
-			ProfitResult result = calculator.evaluate(recipe, prices, cfg, primaryLevel(recipe),
+			ProfitResult result = calculator.evaluate(recipe, activeLens(), cfg, primaryLevel(recipe),
 					activeModifiers);
 			if (!passesFilters(result, outId))
 				continue;
@@ -487,13 +503,13 @@ public class ProcessingProfitPlugin extends Plugin
 				continue;
 
 			int level = primaryLevel(recipe);
-			SourcingResult result = sourcing.evaluate(recipe, prices, cfg, level,
+			SourcingResult result = sourcing.evaluate(recipe, activeLens(), cfg, level,
 					activeModifiers, held, SourcingMode.ON_HAND,
 					SourcingEngine.DEFAULT_HYBRID_TARGET);
 			if (result.getMakeableNow() <= 0 || result.getProfitEach() < config.minProfit())
 				continue;
 
-			ProfitResult profit = calculator.evaluate(recipe, prices, cfg, level,
+			ProfitResult profit = calculator.evaluate(recipe, activeLens(), cfg, level,
 					activeModifiers);
 			rows.add(toRow(recipe, profit, result.getMakeableNow()));
 		}
@@ -553,7 +569,7 @@ public class ProcessingProfitPlugin extends Plugin
 		if (result.isThroughputKnown() && result.getGpPerHour() < config.minGpPerHour())
 			return false;
 
-		return prices.volume(outputId) >= config.minVolume();
+		return ironman() || prices.volume(outputId) >= config.minVolume();
 	}
 
 	private void showDetail(RecipeRow row)
@@ -565,7 +581,7 @@ public class ProcessingProfitPlugin extends Plugin
 		executor.execute(() ->
 		{
 			PriceConfig cfg = priceConfig();
-			RecipeDetail detail = DetailBuilder.build(recipe, prices, cfg, primaryLevel(recipe),
+			RecipeDetail detail = DetailBuilder.build(recipe, activeLens(), cfg, primaryLevel(recipe),
 					activeModifiers, calculator);
 			panel.showDetail(detail);
 		});
@@ -635,7 +651,7 @@ public class ProcessingProfitPlugin extends Plugin
 				if (recipe == null || recipe.primaryOutputId() == null)
 					continue;
 
-				ProfitResult result = calculator.evaluate(recipe, prices, cfg, primaryLevel(recipe),
+				ProfitResult result = calculator.evaluate(recipe, activeLens(), cfg, primaryLevel(recipe),
 						activeModifiers);
 				rows.add(toRow(recipe, result, -1));
 			}
@@ -680,10 +696,11 @@ public class ProcessingProfitPlugin extends Plugin
 		}
 
 		PriceConfig cfg = priceConfig();
-		ChainValuator valuator = new ChainValuator(recipes, prices, cfg, this::levelFor,
+		PriceLookup lens = activeLens();
+		ChainValuator valuator = new ChainValuator(recipes, lens, cfg, this::levelFor,
 				activeModifiers);
 		ToIntFunction<Integer> buyLimit = this::buyLimitOf;
-		ShoppingListBuilder builder = new ShoppingListBuilder(valuator, prices, this::levelFor,
+		ShoppingListBuilder builder = new ShoppingListBuilder(valuator, lens, this::levelFor,
 				activeModifiers, buyLimit);
 		ShoppingList list = builder.build(requests, held);
 		panel.setShoppingList(list, summary);
@@ -698,9 +715,11 @@ public class ProcessingProfitPlugin extends Plugin
 		SuccessModel model = recipe.getSuccess();
 		Double success = model == null || model.getType() == SuccessType.ALWAYS
 				? null : result.getSuccessChance();
-		long volume = prices.volume(primary.getItemId());
+		long volume = activeLens().volume(primary.getItemId());
 		GateResult gate = gateFor(recipe);
-		LiquidityResult liq = Liquidity.assess(recipe, this::buyLimitOf, volume);
+		LiquidityResult liq = ironman()
+				? new LiquidityResult(0, false, false)
+				: Liquidity.assess(recipe, this::buyLimitOf, volume);
 		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, result.getProfitEach(),
 				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
 				success, levelReq, volume, makeable, result.isStalePrices(), gate.isLocked(),
@@ -710,6 +729,9 @@ public class ProcessingProfitPlugin extends Plugin
 
 	private int buyLimitOf(int itemId)
 	{
+		if (ironman())
+			return 0;
+
 		ItemMapping mapping = prices.mapping(itemId);
 		return mapping == null ? 0 : mapping.getLimit();
 	}
@@ -743,7 +765,24 @@ public class ProcessingProfitPlugin extends Plugin
 	private PriceConfig priceConfig()
 	{
 		double efficiency = Math.max(1, Math.min(100, config.efficiency())) / 100.0;
-		return new PriceConfig(config.applyGeTax(), efficiency);
+		return new PriceConfig(config.applyGeTax() && !ironman(), efficiency);
+	}
+
+	private boolean ironman()
+	{
+		return config.valuationLens() == ValuationLens.IRONMAN;
+	}
+
+	/**
+	 * The active valuation lens: the live GE-market lookup, or the no-GE {@link IronmanValuation} (alch/
+	 * shop) when the Ironman lens is selected. The concrete {@link GePriceLookup} is still the data source
+	 * for refreshes and item metadata; only the buy/sell/volume valuation is routed through the lens.
+	 *
+	 * @return the price lookup the engine should value with
+	 */
+	private PriceLookup activeLens()
+	{
+		return ironman() ? ironmanLens : prices;
 	}
 
 	private static BufferedImage navIcon()

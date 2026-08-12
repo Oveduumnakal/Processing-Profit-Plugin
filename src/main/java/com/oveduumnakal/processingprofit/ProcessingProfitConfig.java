@@ -79,14 +79,15 @@ public interface ProcessingProfitConfig extends Config
 	}
 
 	/**
-	 * The valuation lens. Ironman (no-GE) is a v2 placeholder that currently behaves as GE market.
+	 * The valuation lens: GE market, or the Ironman (no-GE) lens that values by alch/shop with GE tax,
+	 * buy limits and volume gating disabled.
 	 *
 	 * @return the valuation lens
 	 */
 	@ConfigItem(
 		keyName = "valuationLens",
 		name = "Valuation",
-		description = "GE market prices, or the Ironman (no-GE) lens (v2 placeholder).",
+		description = "GE market prices, or the Ironman (no-GE) alch/shop lens.",
 		section = calculationSection,
 		position = 1
 	)
