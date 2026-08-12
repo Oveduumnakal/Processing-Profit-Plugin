@@ -1217,6 +1217,9 @@ public class ProcessingProfitPanel extends PluginPanel
 		content.add(section("Throughput", dims));
 
 		content.add(section("Cost breakdown", costLines(d)));
+		if (d.getChainTree() != null && !d.getChainTree().isEmpty())
+			content.add(chainTreeSection(d.getChainTree()));
+
 		if (d.isFailCapable())
 			content.add(section("Success @ level " + d.getLevel(), successLines(d)));
 
@@ -1346,6 +1349,128 @@ public class ProcessingProfitPanel extends PluginPanel
 		label.setForeground(SP_MUTED);
 		label.setAlignmentX(Component.LEFT_ALIGNMENT);
 		label.setBorder(new EmptyBorder(2, 6, 0, 0));
+		return label;
+	}
+
+	private JPanel chainTreeSection(List<ChainNode> tree)
+	{
+		JPanel panel = listPanel();
+		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.setBorder(new EmptyBorder(6, 2, 0, 2));
+
+		JLabel header = new JLabel("Make-or-buy tree");
+		header.setFont(FontManager.getRunescapeBoldFont());
+		header.setForeground(SP_GOLD);
+		header.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.add(header);
+
+		for (ChainNode node : tree)
+			panel.add(chainNodeComponent(node, 0));
+
+		return panel;
+	}
+
+	private JComponent chainNodeComponent(ChainNode node, int depth)
+	{
+		JPanel holder = new JPanel();
+		holder.setLayout(new BoxLayout(holder, BoxLayout.Y_AXIS));
+		holder.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		holder.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JPanel children = new JPanel();
+		children.setLayout(new BoxLayout(children, BoxLayout.Y_AXIS));
+		children.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		children.setAlignmentX(Component.LEFT_ALIGNMENT);
+		for (ChainNode child : node.getChildren())
+			children.add(chainNodeComponent(child, depth + 1));
+
+		holder.add(chainNodeRow(node, depth, children));
+		if (!node.getChildren().isEmpty())
+			holder.add(children);
+
+		return holder;
+	}
+
+	private JPanel chainNodeRow(ChainNode node, int depth, JPanel children)
+	{
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setBorder(new EmptyBorder(2, 6 + depth * 12, 0, 0));
+
+		JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+		left.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		if (!node.getChildren().isEmpty())
+			left.add(chainToggle(children));
+
+		JLabel name = new JLabel(node.getQty() + "× " + node.getLabel());
+		name.setFont(FontManager.getRunescapeSmallFont());
+		name.setForeground(Color.WHITE);
+		left.add(name);
+		row.add(left, BorderLayout.WEST);
+
+		row.add(chainCost(node), BorderLayout.EAST);
+		capHeight(row);
+		return row;
+	}
+
+	private JLabel chainToggle(JPanel children)
+	{
+		JLabel arrow = new JLabel("▾");
+		arrow.setFont(FontManager.getRunescapeSmallFont());
+		arrow.setForeground(SP_MUTED);
+		arrow.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		arrow.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				boolean show = !children.isVisible();
+				children.setVisible(show);
+				arrow.setText(show ? "▾" : "▸");
+				detailHolder.revalidate();
+				detailHolder.repaint();
+			}
+		});
+		return arrow;
+	}
+
+	private static JPanel chainCost(ChainNode node)
+	{
+		JPanel costs = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		costs.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		boolean buyAvail = node.getBuyCost() != ChainNode.UNAVAILABLE;
+		boolean craftAvail = node.getCraftCost() != ChainNode.UNAVAILABLE;
+		if (!buyAvail && !craftAvail)
+		{
+			costs.add(chainCostLabel("?", SP_MUTED));
+			return costs;
+		}
+
+		if (craftAvail)
+			costs.add(chainCostLabel("make " + num(node.getCraftCost()),
+					node.isViaBuy() ? SP_MUTED : SP_HIGH));
+
+		if (buyAvail)
+			costs.add(chainCostLabel("buy " + num(node.getBuyCost()),
+					node.isViaBuy() ? SP_HIGH : SP_MUTED));
+
+		if (node.isTruncated())
+		{
+			JLabel more = chainCostLabel("…", SP_MUTED);
+			more.setToolTipText("Chain continues (depth cap or cycle)");
+			costs.add(more);
+		}
+
+		return costs;
+	}
+
+	private static JLabel chainCostLabel(String text, Color color)
+	{
+		JLabel label = new JLabel(text);
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(color);
 		return label;
 	}
 

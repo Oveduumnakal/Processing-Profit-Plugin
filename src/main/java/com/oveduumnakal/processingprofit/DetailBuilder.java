@@ -45,12 +45,13 @@ public final class DetailBuilder
 	 * @param prices the price source
 	 * @param cfg    the tax/efficiency config
 	 * @param level  the level to evaluate the success curve at
-	 * @param active the success modifiers currently in effect
-	 * @param calc   the profit calculator supplying headline and break-even numbers
+	 * @param active   the success modifiers currently in effect
+	 * @param calc     the profit calculator supplying headline and break-even numbers
+	 * @param valuator the recursive make-or-buy valuator supplying the input chain tree
 	 * @return the itemised breakdown
 	 */
 	public static RecipeDetail build(Recipe rec, PriceLookup prices, PriceConfig cfg, int level,
-			List<SuccessModifier> active, ProfitCalculator calc)
+			List<SuccessModifier> active, ProfitCalculator calc, ChainValuator valuator)
 	{
 		ProfitResult res = calc.evaluate(rec, prices, cfg, level, active);
 		double yieldMult = Success.yieldMult(rec, active);
@@ -110,11 +111,13 @@ public final class DetailBuilder
 		String failureLabel = fail == null || fail.getName() == null
 				? null : fail.getName() + " ×" + fail.getQty();
 
+		List<ChainNode> chainTree = ChainTreeBuilder.build(rec, valuator);
+
 		return new RecipeDetail(primaryName(rec), primaryId(rec), inputs, tools, res.getInputCost(),
 				outputs, grossOutput, tax, res.getProfitEach() + res.getInputCost(), res.getProfitEach(),
 				res.getRoi(), res.isThroughputKnown(), res.getGpPerHour(), res.getXpPerHour(),
 				res.getProfitPerXp(), level, failCapable, baseChance, finalChance, yieldMult,
-				modifierNotes, failureLabel, breakEven, res.isStalePrices());
+				modifierNotes, failureLabel, breakEven, res.isStalePrices(), chainTree);
 	}
 
 	private static long unitBuy(PriceLookup prices, Integer id)
