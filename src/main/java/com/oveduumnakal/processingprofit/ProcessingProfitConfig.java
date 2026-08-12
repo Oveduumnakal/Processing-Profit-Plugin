@@ -218,6 +218,24 @@ public interface ProcessingProfitConfig extends Config
 	}
 
 	/**
+	 * Whether to draw the bank overlay listing the top makeable products and total achievable profit
+	 * while the bank is open.
+	 *
+	 * @return true to draw the bank overlay
+	 */
+	@ConfigItem(
+		keyName = "showBankOverlay",
+		name = "Bank overlay",
+		description = "While banking, show the top makeable products and total achievable profit.",
+		section = displaySection,
+		position = 4
+	)
+	default boolean showBankOverlay()
+	{
+		return true;
+	}
+
+	/**
 	 * Whether the jeweller's chisel gem-cutting bonus applies. Not auto-detectable, so {@code AUTO}
 	 * behaves as off until forced on.
 	 *
