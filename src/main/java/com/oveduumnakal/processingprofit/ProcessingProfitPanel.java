@@ -50,6 +50,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -64,7 +65,9 @@ import javax.swing.JButton;
 import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JMenu;
 import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
@@ -131,6 +134,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static final String K_SHOW_LOW_VOLUME = "panelFilterShowLowVolume";
 	private static final String K_SHOW_STALE = "panelFilterShowStale";
 	private static final String K_SHOW_THROTTLED = "panelFilterShowThrottled";
+	private static final String K_PRESETS = "presets";
 
 	private final ProcessingProfitConfig config;
 	private final ConfigManager configManager;
@@ -138,6 +142,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private final JLabel sortToggle = new JLabel("⇅", SwingConstants.CENTER);
 	private final JLabel filterToggle = new JLabel();
 	private final JLabel compactToggle = new JLabel("≣", SwingConstants.CENTER);
+	private final JLabel presetToggle = new JLabel();
 	private final JTextField searchField = new PlaceholderTextField("Search ...");
 	private final JLabel modifierLine = new JLabel("Modifiers: none");
 
@@ -300,12 +305,15 @@ public class ProcessingProfitPanel extends PluginPanel
 	 */
 	private JPanel toolbar()
 	{
+		styleToggle(presetToggle, "Presets", this::showPresetMenu);
 		styleToggle(sortToggle, "Sort", this::showSortMenu);
 		styleToggle(filterToggle, "Filter by skill", this::showSkillMenu);
 		styleToggle(compactToggle, "Toggle compact view", this::toggleCompact);
 		sortToggle.setFont(FontManager.getRunescapeBoldFont());
 		compactToggle.setFont(FontManager.getRunescapeBoldFont().deriveFont(14f));
 
+		installToggleHover(presetToggle, () -> false,
+				color -> presetToggle.setIcon(presetIcon(color)), this::updatePresetToggle);
 		installToggleHover(sortToggle, () -> sortIndex != 0 || sortReversed,
 				sortToggle::setForeground, this::updateSortToggle);
 		installToggleHover(filterToggle, this::filterActive,
@@ -313,6 +321,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		installToggleHover(compactToggle, () -> compact,
 				compactToggle::setForeground, this::updateCompactToggle);
 
+		updatePresetToggle();
 		updateSortToggle();
 		updateFilterToggle();
 		updateCompactToggle();
@@ -320,6 +329,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		JPanel toggles = new JPanel();
 		toggles.setLayout(new BoxLayout(toggles, BoxLayout.X_AXIS));
 		toggles.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		toggles.add(presetToggle);
 		toggles.add(sortToggle);
 		toggles.add(filterToggle);
 		toggles.add(compactToggle);
@@ -340,6 +350,161 @@ public class ProcessingProfitPanel extends PluginPanel
 				onClick.run();
 			}
 		});
+	}
+
+	/**
+	 * Opens the presets menu: each saved preset applies on click; a "Save current as…" entry snapshots the
+	 * live filter/sort/mode/lens; and, when any exist, a Delete submenu removes one.
+	 */
+	private void showPresetMenu()
+	{
+		JPopupMenu menu = new JPopupMenu();
+		List<Preset> presets = loadPresets();
+
+		if (presets.isEmpty())
+		{
+			JMenuItem empty = new JMenuItem("No saved presets");
+			empty.setFont(FontManager.getRunescapeSmallFont());
+			empty.setEnabled(false);
+			menu.add(empty);
+		}
+		else
+		{
+			for (Preset preset : presets)
+			{
+				JMenuItem item = new JMenuItem(preset.getName());
+				item.setFont(FontManager.getRunescapeSmallFont());
+				item.addActionListener(e -> applyPreset(preset));
+				menu.add(item);
+			}
+		}
+
+		menu.addSeparator();
+
+		JMenuItem save = new JMenuItem("Save current as…");
+		save.setFont(FontManager.getRunescapeSmallFont());
+		save.addActionListener(e -> saveCurrentAsPreset());
+		menu.add(save);
+
+		if (!presets.isEmpty())
+		{
+			JMenu delete = new JMenu("Delete");
+			delete.setFont(FontManager.getRunescapeSmallFont());
+			for (Preset preset : presets)
+			{
+				JMenuItem item = new JMenuItem(preset.getName());
+				item.setFont(FontManager.getRunescapeSmallFont());
+				item.addActionListener(e -> deletePreset(preset.getName()));
+				delete.add(item);
+			}
+
+			menu.add(delete);
+		}
+
+		menu.show(presetToggle, 0, presetToggle.getHeight());
+	}
+
+	/**
+	 * Prompts for a name and saves the current filter/sort/mode/lens as a preset, replacing any existing
+	 * preset of the same name. A cancelled or blank name is ignored.
+	 */
+	private void saveCurrentAsPreset()
+	{
+		String name = JOptionPane.showInputDialog(this, "Preset name:", "Save preset",
+				JOptionPane.PLAIN_MESSAGE);
+		if (name == null)
+			return;
+
+		name = name.trim();
+		if (name.isEmpty())
+			return;
+
+		Preset preset = new Preset(name, captureValues());
+		savePresets(PresetStore.upsert(loadPresets(), preset));
+	}
+
+	/**
+	 * Removes the named preset from the store.
+	 *
+	 * @param name the preset name to delete
+	 */
+	private void deletePreset(String name)
+	{
+		savePresets(PresetStore.remove(loadPresets(), name));
+	}
+
+	/**
+	 * Snapshots the live filter/sort/mode/lens state into a value map keyed by the config keys in
+	 * {@link PresetStore#PRESET_KEYS}. Config-backed settings are read at their effective values (so a
+	 * never-touched default is captured, not {@code null}); the toolbar keys come from the panel fields.
+	 *
+	 * @return the captured values
+	 */
+	private Map<String, String> captureValues()
+	{
+		Map<String, String> values = new LinkedHashMap<>();
+		values.put("sourcingMode", config.sourcingMode().name());
+		values.put("valuationLens", config.valuationLens().name());
+		values.put("gatingMode", config.gatingMode().name());
+		values.put("showMembers", Boolean.toString(config.showMembers()));
+		values.put("minProfit", Integer.toString(config.minProfit()));
+		values.put("minGpPerHour", Integer.toString(config.minGpPerHour()));
+		values.put("minVolume", Integer.toString(config.minVolume()));
+		values.put(K_SORT_INDEX, Integer.toString(sortIndex));
+		values.put(K_SORT_REVERSED, Boolean.toString(sortReversed));
+		values.put(K_COMPACT, Boolean.toString(compact));
+		values.put(K_DISABLED_SKILLS, String.join(",", disabledSkills));
+		values.put(K_SHOW_LOW_VOLUME, Boolean.toString(showLowVolume));
+		values.put(K_SHOW_STALE, Boolean.toString(showStale));
+		values.put(K_SHOW_THROTTLED, Boolean.toString(showThrottled));
+		return values;
+	}
+
+	/**
+	 * Applies a preset: writes each allowlisted key back through the config (config-backed keys trigger the
+	 * plugin's rebuild via {@code onConfigChanged}), then reloads the toolbar state and re-renders so the
+	 * panel-side filter keys take effect immediately.
+	 *
+	 * @param preset the preset to apply
+	 */
+	private void applyPreset(Preset preset)
+	{
+		if (configManager == null)
+			return;
+
+		String group = ProcessingProfitConfig.GROUP;
+		for (Map.Entry<String, String> entry : preset.getValues().entrySet())
+		{
+			if (entry.getValue() != null && PresetStore.PRESET_KEYS.contains(entry.getKey()))
+				configManager.setConfiguration(group, entry.getKey(), entry.getValue());
+		}
+
+		loadFilterState();
+		updateSortToggle();
+		updateFilterToggle();
+		updateCompactToggle();
+		renderAll();
+	}
+
+	private List<Preset> loadPresets()
+	{
+		if (configManager == null)
+			return new ArrayList<>();
+
+		return PresetStore.parse(read(K_PRESETS));
+	}
+
+	private void savePresets(List<Preset> presets)
+	{
+		if (configManager == null)
+			return;
+
+		configManager.setConfiguration(ProcessingProfitConfig.GROUP, K_PRESETS, PresetStore.format(presets));
+	}
+
+	private void updatePresetToggle()
+	{
+		presetToggle.setIcon(presetIcon(ColorScheme.LIGHT_GRAY_COLOR));
 	}
 
 	/**
@@ -660,6 +825,28 @@ public class ProcessingProfitPanel extends PluginPanel
 				new int[]{1, size - 1, size / 2 + 1, size / 2 + 1, size / 2 - 1, size / 2 - 1},
 				new int[]{2, 2, size / 2, size - 1, size - 1, size / 2},
 				6);
+		g.dispose();
+		return new ImageIcon(img);
+	}
+
+	/**
+	 * Paints a small bookmark (preset) icon in the given colour: a ribbon with a notch cut into its
+	 * bottom edge.
+	 *
+	 * @param color the icon colour
+	 * @return the bookmark icon
+	 */
+	private static Icon presetIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+		g.fillPolygon(
+				new int[]{3, size - 3, size - 3, size / 2, 3},
+				new int[]{1, 1, size - 1, size / 2 + 1, size - 1},
+				5);
 		g.dispose();
 		return new ImageIcon(img);
 	}
