@@ -107,6 +107,17 @@ public class ChainTreeBuilderTest
 				null, false, null, reqs, SuccessModel.always(), null);
 	}
 
+	private static Recipe recipeWithTool(int outId, String toolName, ItemStack... inputs)
+	{
+		List<RecipeOutput> outs = Collections.singletonList(new RecipeOutput(outId, "out-" + outId, 1, null,
+				null));
+		List<ItemStack> tools = Collections.singletonList(new ItemStack(999, toolName, 1, false));
+		List<SkillReq> skills = Collections.singletonList(new SkillReq("Smithing", 1, 1.0, false));
+		Requirements reqs = new Requirements(Collections.emptyList(), Collections.emptyList());
+		return new Recipe("r-" + outId, outs, Arrays.asList(inputs), tools, skills, 5, null, false, null,
+				reqs, SuccessModel.always(), null);
+	}
+
 	private ChainValuator valuator(PriceLookup prices, Recipe... recipes)
 	{
 		RecipeRepository repo = new RecipeRepository();
@@ -284,6 +295,19 @@ public class ChainTreeBuilderTest
 
 		MaterialLine left = line(tree.getLeftovers(), 1);
 		assertEquals(1L, left.getQty());
+	}
+
+	@Test
+	public void craftedNodeCarriesTools()
+	{
+		MapPrices prices = new MapPrices().put(1, 100L, 90L).put(2, 500L, 450L);
+		Recipe product = recipeWithTool(2, "Hammer", in(1, 1));
+		ChainValuator valuator = valuator(prices, product);
+
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L);
+
+		ChainNode root = tree.getRoots().get(0);
+		assertTrue(root.getTools().contains("Hammer"));
 	}
 
 	@Test

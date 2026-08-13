@@ -25,6 +25,7 @@
 package com.oveduumnakal.processingprofit;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,6 +60,7 @@ public final class ChainTreeBuilder
 	public static final int MAX_DEPTH = 6;
 
 	private static final int DEFAULT_LEVEL = 99;
+	private static final List<String> NO_TOOLS = Collections.emptyList();
 
 	private final ChainValuator valuator;
 	private final Map<Integer, Integer> held;
@@ -155,7 +157,7 @@ public final class ChainTreeBuilder
 		long surplus = primarySurplus(rec, actions, targetQty);
 		long owned = id > 0 ? ownedOf(id) : 0L;
 		return new ChainNode(id, label, targetQty, false, skill, PriceLookup.UNKNOWN, owned, false, surplus,
-				false, children);
+				false, children, toolNames(rec));
 	}
 
 	private List<ChainNode> childrenOf(Recipe rec, long actions, int depth, Set<Integer> path)
@@ -179,7 +181,7 @@ public final class ChainTreeBuilder
 		{
 			addTotal(itemId, label, qtyNeeded);
 			return new ChainNode(itemId, label, qtyNeeded, false, null, PriceLookup.UNKNOWN, owned, true,
-					0L, false, new ArrayList<>());
+					0L, false, new ArrayList<>(), NO_TOOLS);
 		}
 
 		if (options.forceBuy(itemId, label))
@@ -187,7 +189,7 @@ public final class ChainTreeBuilder
 			addTotal(itemId, label, qtyNeeded);
 			long unit = valuator.prices().buyPrice(itemId);
 			return new ChainNode(itemId, label, qtyNeeded, true, null, unit, owned, false, 0L, false,
-					new ArrayList<>());
+					new ArrayList<>(), NO_TOOLS);
 		}
 
 		Sourcing s = valuator.cheapest(itemId);
@@ -197,14 +199,14 @@ public final class ChainTreeBuilder
 			addTotal(itemId, label, qtyNeeded);
 			long unit = valuator.prices().buyPrice(itemId);
 			return new ChainNode(itemId, label, qtyNeeded, true, null, unit, owned, false, 0L, false,
-					new ArrayList<>());
+					new ArrayList<>(), NO_TOOLS);
 		}
 
 		Recipe craft = s.getCraftRecipe();
 		String skill = craft.primarySkill() == null ? null : craft.primarySkill().getSkill();
 		if (depth >= options.getMaxDepth() || path.contains(itemId))
 			return new ChainNode(itemId, label, qtyNeeded, false, skill, PriceLookup.UNKNOWN, owned, false,
-					0L, true, new ArrayList<>());
+					0L, true, new ArrayList<>(), toolNames(craft));
 
 		long shortfall = qtyNeeded - owned;
 		double exp = expectedPrimary(craft);
@@ -213,7 +215,7 @@ public final class ChainTreeBuilder
 			addTotal(itemId, label, qtyNeeded);
 			long unit = valuator.prices().buyPrice(itemId);
 			return new ChainNode(itemId, label, qtyNeeded, true, null, unit, owned, false, 0L, false,
-					new ArrayList<>());
+					new ArrayList<>(), NO_TOOLS);
 		}
 
 		long actions = actionsFor(shortfall, exp);
@@ -227,7 +229,7 @@ public final class ChainTreeBuilder
 		List<ChainNode> children = childrenOf(craft, actions, depth + 1, path);
 		path.remove(itemId);
 		return new ChainNode(itemId, label, qtyNeeded, false, skill, PriceLookup.UNKNOWN, owned, false,
-				surplus, false, children);
+				surplus, false, children, toolNames(craft));
 	}
 
 	/**
@@ -357,5 +359,25 @@ public final class ChainTreeBuilder
 	{
 		SuccessModel model = r.getSuccess();
 		return model == null || model.getType() == SuccessType.ALWAYS;
+	}
+
+	/**
+	 * The names of a recipe's non-consumed tools/equipment (hammer, needle, chisel, …), shown on a crafted
+	 * node so the tree says what each step is made with.
+	 *
+	 * @param r the recipe
+	 * @return the tool names, or an empty list when the recipe needs no tools
+	 */
+	private static List<String> toolNames(Recipe r)
+	{
+		List<ItemStack> tools = r.getTools();
+		if (tools.isEmpty())
+			return NO_TOOLS;
+
+		List<String> names = new ArrayList<>(tools.size());
+		for (ItemStack tool : tools)
+			names.add(tool.getName());
+
+		return names;
 	}
 }

@@ -568,7 +568,13 @@ public class RecipeTreeWindow extends JFrame
 				return null;
 
 			if (node.getViaSkill() != null)
-				return node.isTruncated() ? "via " + node.getViaSkill() + " …" : "via " + node.getViaSkill();
+			{
+				String base = "via " + node.getViaSkill();
+				if (!node.getTools().isEmpty())
+					base += " · " + String.join(", ", node.getTools());
+
+				return node.isTruncated() ? base + " …" : base;
+			}
 
 			if (node.isViaBuy())
 				return node.getBuyUnit() > 0 ? "buy" : "gather";
