@@ -97,6 +97,7 @@ public class ProcessingProfitPlugin extends Plugin
 {
 	private static final int BROWSE_LEVEL = 99;
 	private static final String WATCHLIST_KEY = "watchlist";
+	private static final String PRESETS_KEY = "presets";
 	private static final int COOKING_GAUNTLETS_ID = 775;
 	private static final Set<Integer> COOKING_CAPE_IDS = new HashSet<>(Arrays.asList(9801, 9802, 9948));
 
@@ -302,6 +303,7 @@ public class ProcessingProfitPlugin extends Plugin
 	{
 		if (!ProcessingProfitConfig.GROUP.equals(event.getGroup())
 				|| WATCHLIST_KEY.equals(event.getKey())
+				|| PRESETS_KEY.equals(event.getKey())
 				|| event.getKey().startsWith("panelFilter"))
 			return;
 
