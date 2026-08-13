@@ -200,24 +200,6 @@ public interface ProcessingProfitConfig extends Config
 	}
 
 	/**
-	 * Whether the alt-hover tooltip showing the best processing chain is drawn over inventory and bank
-	 * items.
-	 *
-	 * @return true to draw the hover tooltip
-	 */
-	@ConfigItem(
-		keyName = "showTooltip",
-		name = "Show hover tooltip",
-		description = "Show the best-chain profit tooltip when hovering an item with alt held.",
-		section = displaySection,
-		position = 3
-	)
-	default boolean showTooltip()
-	{
-		return true;
-	}
-
-	/**
 	 * Whether to draw the bank overlay listing the top makeable products and total achievable profit
 	 * while the bank is open.
 	 *
