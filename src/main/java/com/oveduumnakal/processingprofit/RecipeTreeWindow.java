@@ -27,6 +27,7 @@ package com.oveduumnakal.processingprofit;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
@@ -62,6 +63,7 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.util.AsyncBufferedImage;
+import net.runelite.client.util.QuantityFormatter;
 
 /**
  * A standalone, resizable window showing the full graphical make-or-buy recipe tree for one product: node
@@ -332,14 +334,25 @@ public class RecipeTreeWindow extends JFrame
 		TreeCanvas()
 		{
 			setBackground(ColorScheme.DARK_GRAY_COLOR);
-			addMouseListener(new MouseAdapter()
+			MouseAdapter mouse = new MouseAdapter()
 			{
 				@Override
 				public void mouseClicked(MouseEvent e)
 				{
-					onClick(e.getPoint());
+					Laid hit = nodeAt(e.getPoint());
+					if (hit != null)
+						toggleForceBuy(hit.node.getItemId());
 				}
-			});
+
+				@Override
+				public void mouseMoved(MouseEvent e)
+				{
+					boolean over = nodeAt(e.getPoint()) != null;
+					setCursor(Cursor.getPredefinedCursor(over ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+				}
+			};
+			addMouseListener(mouse);
+			addMouseMotionListener(mouse);
 		}
 
 		void setTree(ChainTree tree)
@@ -351,16 +364,15 @@ public class RecipeTreeWindow extends JFrame
 			repaint();
 		}
 
-		private void onClick(Point p)
+		private Laid nodeAt(Point p)
 		{
 			for (Laid laid : flat)
 			{
 				if (p.x >= laid.x && p.x <= laid.x + laid.boxW && p.y >= laid.y && p.y <= laid.y + BOX_H)
-				{
-					toggleForceBuy(laid.node.getItemId());
-					return;
-				}
+					return laid;
 			}
+
+			return null;
 		}
 
 		private Laid toLaid(ChainNode node, int depth)
@@ -525,12 +537,15 @@ public class RecipeTreeWindow extends JFrame
 			String sub = nodeSubtitle(node);
 			if (sub == null)
 			{
+				FontMetrics fm = g2.getFontMetrics();
+				int baseline = y + BOX_H / 2 + 4;
 				g2.setColor(node.isCovered() ? HIGH : Color.WHITE);
-				g2.drawString(title, textX, y + BOX_H / 2 + 4);
+				g2.drawString(title, textX, baseline);
 				if (node.isCovered())
 				{
-					int tw = g2.getFontMetrics().stringWidth(title);
-					g2.drawLine(textX, y + BOX_H / 2 + 1, textX + tw, y + BOX_H / 2 + 1);
+					int tw = fm.stringWidth(title);
+					int strikeY = baseline - fm.getAscent() / 2;
+					g2.drawLine(textX, strikeY, textX + tw, strikeY);
 				}
 			}
 			else
@@ -577,7 +592,8 @@ public class RecipeTreeWindow extends JFrame
 			}
 
 			if (node.isViaBuy())
-				return node.getBuyUnit() > 0 ? "buy" : "gather";
+				return node.getBuyUnit() > 0
+						? "buy " + QuantityFormatter.quantityToStackSize(node.getBuyUnit()) + " ea" : "gather";
 
 			return null;
 		}
