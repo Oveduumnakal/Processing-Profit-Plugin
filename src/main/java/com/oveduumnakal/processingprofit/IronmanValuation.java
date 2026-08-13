@@ -63,6 +63,9 @@ public class IronmanValuation implements PriceLookup
 	@Override
 	public long buyPrice(int itemId)
 	{
+		if (itemId == COINS_ID)
+			return 1L;
+
 		ItemMapping mapping = mappingFn.apply(itemId);
 		if (mapping == null || mapping.getValue() <= 0)
 			return UNKNOWN;
@@ -73,6 +76,9 @@ public class IronmanValuation implements PriceLookup
 	@Override
 	public long sellPrice(int itemId)
 	{
+		if (itemId == COINS_ID)
+			return 1L;
+
 		ItemMapping mapping = mappingFn.apply(itemId);
 		if (mapping == null)
 			return UNKNOWN;

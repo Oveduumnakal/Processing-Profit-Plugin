@@ -29,6 +29,7 @@ import java.util.Map;
 
 import com.oveduumnakal.processingprofit.GePriceLookup.Resolved;
 import com.oveduumnakal.processingprofit.WikiPriceClient.ItemAverages;
+import com.oveduumnakal.processingprofit.WikiPriceClient.ItemPrices;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -47,13 +48,23 @@ public class GePriceLookupTest
 		return new ItemAverages(high, low, highVol, lowVol);
 	}
 
+	private static ItemPrices price(long high, long low)
+	{
+		return new ItemPrices(high, low, 0L, 0L);
+	}
+
+	private static Map<Integer, ItemPrices> noLatest()
+	{
+		return new HashMap<>();
+	}
+
 	@Test
 	public void buyIsInstantBuyAndSellIsInstantSell()
 	{
 		Map<Integer, ItemAverages> five = new HashMap<>();
 		five.put(10, avg(100L, 90L, 500L, 300L));
 
-		Map<Integer, Resolved> resolved = GePriceLookup.resolve(five, new HashMap<>());
+		Map<Integer, Resolved> resolved = GePriceLookup.resolve(five, new HashMap<>(), noLatest());
 		Resolved r = resolved.get(10);
 
 		assertEquals(100L, r.getBuy());
@@ -63,28 +74,44 @@ public class GePriceLookupTest
 	}
 
 	@Test
-	public void fallsBackToOneHourWhenFiveMinuteSideIsNull()
+	public void fallsBackToOneHourWhenFiveMinuteSideIsNullAndStaysFresh()
 	{
 		Map<Integer, ItemAverages> five = new HashMap<>();
 		five.put(10, avg(null, 90L, 0L, 300L));
 		Map<Integer, ItemAverages> hour = new HashMap<>();
 		hour.put(10, avg(95L, 88L, 400L, 350L));
 
-		Map<Integer, Resolved> resolved = GePriceLookup.resolve(five, hour);
+		Map<Integer, Resolved> resolved = GePriceLookup.resolve(five, hour, noLatest());
 		Resolved r = resolved.get(10);
 
 		assertEquals(95L, r.getBuy());
 		assertEquals(90L, r.getSell());
+		assertFalse(r.isStale());
+	}
+
+	@Test
+	public void fallsBackToLatestWhenBothWindowsMissASide()
+	{
+		Map<Integer, ItemAverages> five = new HashMap<>();
+		five.put(10, avg(2135L, null, 22L, 0L));
+		Map<Integer, ItemPrices> latest = new HashMap<>();
+		latest.put(10, price(2109L, 1828L));
+
+		Map<Integer, Resolved> resolved = GePriceLookup.resolve(five, new HashMap<>(), latest);
+		Resolved r = resolved.get(10);
+
+		assertEquals(2135L, r.getBuy());
+		assertEquals(1828L, r.getSell());
 		assertTrue(r.isStale());
 	}
 
 	@Test
-	public void unknownWhenBothWindowsMissASide()
+	public void unknownWhenAllThreeSourcesMissASide()
 	{
 		Map<Integer, ItemAverages> five = new HashMap<>();
 		five.put(10, avg(null, null, 0L, 0L));
 
-		Map<Integer, Resolved> resolved = GePriceLookup.resolve(five, new HashMap<>());
+		Map<Integer, Resolved> resolved = GePriceLookup.resolve(five, new HashMap<>(), noLatest());
 		Resolved r = resolved.get(10);
 
 		assertEquals(PriceLookup.UNKNOWN, r.getBuy());

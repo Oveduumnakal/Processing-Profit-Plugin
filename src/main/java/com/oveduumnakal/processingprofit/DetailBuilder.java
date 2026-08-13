@@ -26,6 +26,7 @@ package com.oveduumnakal.processingprofit;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Turns a recipe into a fully-itemised {@link RecipeDetail} for the detail view. Pure and network-free:
@@ -48,10 +49,13 @@ public final class DetailBuilder
 	 * @param active   the success modifiers currently in effect
 	 * @param calc     the profit calculator supplying headline and break-even numbers
 	 * @param valuator the recursive make-or-buy valuator supplying the input chain tree
+	 * @param held     item id to units the player holds, annotated onto the chain tree
+	 * @param description the product's examine text ({@code null} when unavailable)
 	 * @return the itemised breakdown
 	 */
 	public static RecipeDetail build(Recipe rec, PriceLookup prices, PriceConfig cfg, int level,
-			List<SuccessModifier> active, ProfitCalculator calc, ChainValuator valuator)
+			List<SuccessModifier> active, ProfitCalculator calc, ChainValuator valuator,
+			Map<Integer, Integer> held, String description)
 	{
 		ProfitResult res = calc.evaluate(rec, prices, cfg, level, active);
 		double yieldMult = Success.yieldMult(rec, active);
@@ -67,14 +71,15 @@ public final class DetailBuilder
 				continue;
 			}
 
+			int inId = in.getItemId() == null ? -1 : in.getItemId();
 			long unit = unitBuy(prices, in.getItemId());
 			long total = unit == PriceLookup.UNKNOWN ? PriceLookup.UNKNOWN : unit * (long) in.getQty();
-			inputs.add(new CostLine(in.getName(), in.getQty(), unit, total));
+			inputs.add(new CostLine(inId, in.getName(), in.getQty(), unit, total));
 
 			if (in.getItemId() != null)
 			{
 				long be = calc.breakEvenInputPrice(rec, prices, cfg, level, in.getItemId());
-				breakEven.add(new CostLine(in.getName(), in.getQty(), be, be));
+				breakEven.add(new CostLine(inId, in.getName(), in.getQty(), be, be));
 			}
 		}
 
@@ -86,10 +91,11 @@ public final class DetailBuilder
 		long tax = 0L;
 		for (RecipeOutput out : rec.getOutputs())
 		{
+			int outId = out.getItemId() == null ? -1 : out.getItemId();
 			long sell = unitSell(prices, out.getItemId());
 			long total = sell == PriceLookup.UNKNOWN
 					? PriceLookup.UNKNOWN : Math.round(sell * (double) out.getQty() * yieldMult);
-			outputs.add(new CostLine(out.getName(), out.getQty(), sell, total));
+			outputs.add(new CostLine(outId, out.getName(), out.getQty(), sell, total));
 			if (total != PriceLookup.UNKNOWN)
 			{
 				grossOutput += total;
@@ -111,13 +117,13 @@ public final class DetailBuilder
 		String failureLabel = fail == null || fail.getName() == null
 				? null : fail.getName() + " ×" + fail.getQty();
 
-		List<ChainNode> chainTree = ChainTreeBuilder.build(rec, valuator);
+		ChainTree chainTree = ChainTreeBuilder.build(rec, valuator, held, 1L);
 
 		return new RecipeDetail(primaryName(rec), primaryId(rec), inputs, tools, res.getInputCost(),
 				outputs, grossOutput, tax, res.getProfitEach() + res.getInputCost(), res.getProfitEach(),
 				res.getRoi(), res.isThroughputKnown(), res.getGpPerHour(), res.getXpPerHour(),
 				res.getProfitPerXp(), level, failCapable, baseChance, finalChance, yieldMult,
-				modifierNotes, failureLabel, breakEven, res.isStalePrices(), chainTree);
+				modifierNotes, failureLabel, breakEven, res.isStalePrices(), chainTree, description);
 	}
 
 	private static long unitBuy(PriceLookup prices, Integer id)

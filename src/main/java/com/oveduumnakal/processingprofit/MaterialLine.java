@@ -27,17 +27,38 @@ package com.oveduumnakal.processingprofit;
 import lombok.Value;
 
 /**
- * One line of a {@link RecipeDetail} cost or break-even table: the item {@code itemId} and {@code label},
- * the {@code qty}, the per-unit price and the line {@code total}. A {@code unitPrice} or {@code total} of
- * {@link PriceLookup#UNKNOWN} means the price did not resolve and the view renders it as "?".
- * {@code itemId} is {@code -1} when the line has no backing item.
+ * One aggregated item row in the make-or-buy tree's roll-up sections: the {@code itemId} and
+ * {@code name}, the total {@code qty} involved across the whole tree, and how many the player already
+ * {@code held}. In the <b>Total materials</b> section {@code qty} is the amount consumed at the leaves
+ * and {@code held} is how many of those you own ({@code qty - held} is what you must buy or gather; when
+ * {@code held >= qty} the material is fully covered). In the <b>Leftovers</b> section {@code qty} is the
+ * surplus generated and {@code held} is {@code 0}. A pure view-model built by {@link ChainTreeBuilder}.
  */
 @Value
-public class CostLine
+public class MaterialLine
 {
 	int itemId;
-	String label;
-	int qty;
-	long unitPrice;
-	long total;
+	String name;
+	long qty;
+	long held;
+
+	/**
+	 * Whether the player already owns enough of this material to cover the whole quantity.
+	 *
+	 * @return {@code true} when {@code held} covers {@code qty}
+	 */
+	public boolean isCovered()
+	{
+		return held >= qty;
+	}
+
+	/**
+	 * The quantity that must still be bought or gathered after applying held stock.
+	 *
+	 * @return {@code qty - held}, never negative
+	 */
+	public long toObtain()
+	{
+		return Math.max(0L, qty - held);
+	}
 }

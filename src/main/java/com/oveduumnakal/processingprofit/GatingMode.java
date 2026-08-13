@@ -24,20 +24,26 @@
  */
 package com.oveduumnakal.processingprofit;
 
-import lombok.Value;
-
 /**
- * One line of a {@link RecipeDetail} cost or break-even table: the item {@code itemId} and {@code label},
- * the {@code qty}, the per-unit price and the line {@code total}. A {@code unitPrice} or {@code total} of
- * {@link PriceLookup#UNKNOWN} means the price did not resolve and the view renders it as "?".
- * {@code itemId} is {@code -1} when the line has no backing item.
+ * How the table treats recipes the player cannot yet do (skill level or quest gated): {@code HIDE}
+ * filters them out, {@code GREY} dims them with the lock reason, {@code SHOW} lists them normally.
  */
-@Value
-public class CostLine
+public enum GatingMode
 {
-	int itemId;
-	String label;
-	int qty;
-	long unitPrice;
-	long total;
+	HIDE("Hide locked"),
+	GREY("Grey locked"),
+	SHOW("Show all");
+
+	private final String label;
+
+	GatingMode(String label)
+	{
+		this.label = label;
+	}
+
+	@Override
+	public String toString()
+	{
+		return label;
+	}
 }

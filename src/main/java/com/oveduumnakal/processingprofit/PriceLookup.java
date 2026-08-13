@@ -37,6 +37,9 @@ public interface PriceLookup
 	/** Returned by the price accessors when an item has no usable price. */
 	long UNKNOWN = -1L;
 
+	/** Coins item id. Coins never appear in the price data and are always worth their face value. */
+	int COINS_ID = 995;
+
 	/**
 	 * The price to buy an item (instant-buy side).
 	 *

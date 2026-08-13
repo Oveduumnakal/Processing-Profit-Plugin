@@ -36,12 +36,14 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Unit tests for {@link ChainTreeBuilder}: a buy-only input is a leaf, a cheaper-to-make input expands
- * its craft recipe while still exposing the buy alternative, a chain deeper than the cap is truncated,
- * and a recipe cycle terminates instead of recursing forever.
+ * Unit tests for {@link ChainTreeBuilder}: a buy-only input is a leaf that counts to the Total materials
+ * roll-up, a cheaper-to-make input expands its craft recipe (carrying the crafting skill), a chain
+ * deeper than the cap is truncated, a recipe cycle terminates, a held input is covered and not expanded,
+ * a partially-held input is still sourced, and a batch step generates a leftover.
  */
 public class ChainTreeBuilderTest
 {
@@ -117,25 +119,43 @@ public class ChainTreeBuilderTest
 		return false;
 	}
 
-	@Test
-	public void buyOnlyInputIsALeaf()
+	private static MaterialLine line(List<MaterialLine> lines, int id)
 	{
-		MapPrices prices = new MapPrices().put(1, 100L, 90L).put(2, 500L, 450L);
-		Recipe product = recipe(2, 1, in(1, 1));
-		ChainValuator valuator = valuator(prices, product);
+		for (MaterialLine l : lines)
+			if (l.getItemId() == id)
+				return l;
 
-		List<ChainNode> tree = ChainTreeBuilder.build(product, valuator);
-
-		assertEquals(1, tree.size());
-		ChainNode leaf = tree.get(0);
-		assertTrue(leaf.isViaBuy());
-		assertEquals(100L, leaf.getBuyCost());
-		assertEquals(ChainNode.UNAVAILABLE, leaf.getCraftCost());
-		assertTrue(leaf.getChildren().isEmpty());
+		return null;
 	}
 
 	@Test
-	public void cheaperToMakeExpandsChildrenAndKeepsBuyAlternative()
+	public void buyOnlyInputIsALeafAndCountsToTotals()
+	{
+		MapPrices prices = new MapPrices().put(1, 100L, 90L).put(2, 500L, 450L);
+		Recipe product = recipe(2, 1, in(1, 3));
+		ChainValuator valuator = valuator(prices, product);
+
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L);
+
+		assertEquals(1, tree.getRoots().size());
+		ChainNode root = tree.getRoots().get(0);
+		assertEquals(2, root.getItemId());
+		assertEquals(1, root.getChildren().size());
+		ChainNode leaf = root.getChildren().get(0);
+		assertTrue(leaf.isViaBuy());
+		assertNull(leaf.getViaSkill());
+		assertEquals(100L, leaf.getBuyUnit());
+		assertEquals(3L, leaf.getQty());
+		assertTrue(leaf.getChildren().isEmpty());
+
+		MaterialLine total = line(tree.getTotals(), 1);
+		assertEquals(3L, total.getQty());
+		assertEquals(0L, total.getHeld());
+		assertEquals(3L, total.toObtain());
+	}
+
+	@Test
+	public void cheaperToMakeExpandsChildrenWithSkill()
 	{
 		MapPrices prices = new MapPrices()
 				.put(0, 10L, 8L)
@@ -145,13 +165,14 @@ public class ChainTreeBuilderTest
 		Recipe product = recipe(2, 1, in(1, 1));
 		ChainValuator valuator = valuator(prices, makeItem1, product);
 
-		List<ChainNode> tree = ChainTreeBuilder.build(product, valuator);
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L);
 
-		assertEquals(1, tree.size());
-		ChainNode made = tree.get(0);
+		assertEquals(1, tree.getRoots().size());
+		ChainNode root = tree.getRoots().get(0);
+		assertEquals(1, root.getChildren().size());
+		ChainNode made = root.getChildren().get(0);
 		assertFalse(made.isViaBuy());
-		assertEquals(1000L, made.getBuyCost());
-		assertEquals(10L, made.getCraftCost());
+		assertEquals("Smithing", made.getViaSkill());
 		assertEquals(1, made.getChildren().size());
 		ChainNode leaf = made.getChildren().get(0);
 		assertTrue(leaf.isViaBuy());
@@ -170,9 +191,10 @@ public class ChainTreeBuilderTest
 		}
 
 		ChainValuator valuator = valuator(prices, recipes.toArray(new Recipe[0]));
-		List<ChainNode> tree = ChainTreeBuilder.build(recipe(11, 1, in(10, 1)), valuator);
+		ChainTree tree = ChainTreeBuilder.build(recipe(11, 1, in(10, 1)), valuator,
+				Collections.emptyMap(), 1L);
 
-		assertTrue(anyTruncated(tree));
+		assertTrue(anyTruncated(tree.getRoots()));
 	}
 
 	@Test
@@ -184,8 +206,78 @@ public class ChainTreeBuilderTest
 		Recipe product = recipe(4, 1, in(1, 1));
 		ChainValuator valuator = valuator(prices, makeOne, makeTwo, product);
 
-		List<ChainNode> tree = ChainTreeBuilder.build(product, valuator);
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L);
 
-		assertEquals(1, tree.size());
+		assertEquals(1, tree.getRoots().size());
+	}
+
+	@Test
+	public void heldInputIsCoveredAndNotExpanded()
+	{
+		MapPrices prices = new MapPrices()
+				.put(0, 10L, 8L)
+				.put(1, 1000L, 900L)
+				.put(2, 5000L, 4500L);
+		Recipe makeItem1 = recipe(1, 1, in(0, 1));
+		Recipe product = recipe(2, 1, in(1, 1));
+		ChainValuator valuator = valuator(prices, makeItem1, product);
+		Map<Integer, Integer> held = new HashMap<>();
+		held.put(1, 1);
+
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, held, 1L);
+
+		ChainNode root = tree.getRoots().get(0);
+		ChainNode node = root.getChildren().get(0);
+		assertTrue(node.isCovered());
+		assertEquals(1L, node.getHeld());
+		assertTrue(node.getChildren().isEmpty());
+
+		MaterialLine total = line(tree.getTotals(), 1);
+		assertTrue(total.isCovered());
+		assertEquals(0L, total.toObtain());
+	}
+
+	@Test
+	public void partialHeldIsRecordedButStillExpanded()
+	{
+		MapPrices prices = new MapPrices()
+				.put(0, 10L, 8L)
+				.put(1, 1000L, 900L)
+				.put(2, 5000L, 4500L);
+		Recipe makeItem1 = recipe(1, 1, in(0, 1));
+		Recipe product = recipe(2, 1, in(1, 2));
+		ChainValuator valuator = valuator(prices, makeItem1, product);
+		Map<Integer, Integer> held = new HashMap<>();
+		held.put(1, 1);
+
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, held, 1L);
+
+		ChainNode root = tree.getRoots().get(0);
+		ChainNode node = root.getChildren().get(0);
+		assertFalse(node.isCovered());
+		assertEquals(1L, node.getHeld());
+		assertFalse(node.getChildren().isEmpty());
+	}
+
+	@Test
+	public void batchOutputGeneratesLeftover()
+	{
+		MapPrices prices = new MapPrices()
+				.put(0, 10L, 8L)
+				.put(1, 1000L, 900L)
+				.put(2, 5000L, 4500L);
+		Recipe makeItem1 = recipe(1, 2, in(0, 1));
+		Recipe product = recipe(2, 1, in(1, 1));
+		ChainValuator valuator = valuator(prices, makeItem1, product);
+
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L);
+
+		ChainNode root = tree.getRoots().get(0);
+		ChainNode made = root.getChildren().get(0);
+		assertFalse(made.isViaBuy());
+		assertEquals(1L, made.getSurplus());
+
+		MaterialLine left = line(tree.getLeftovers(), 1);
+		assertEquals(1L, left.getQty());
 	}
 }

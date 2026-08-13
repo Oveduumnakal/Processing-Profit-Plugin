@@ -30,6 +30,10 @@ import urllib.request
 
 WIKI = "https://oldschool.runescape.wiki/api.php"
 PRICES = "https://prices.runescape.wiki/api/v1/osrs/mapping"
+
+# Item ids for names the /mapping endpoint omits. Coins (gp) are a currency, not a tradeable
+# item, so they never appear in the price mapping; resolve them to their canonical id here.
+ID_OVERRIDES = {"Coins": 995}
 UA = "processing-profit-plugin/0.1 (recipe extractor; https://github.com/Oveduumnakal/Processing-Profit-Plugin)"
 
 DEFAULT_OUT = os.path.join(
@@ -199,6 +203,13 @@ def slugify(skill, name):
     return f"{(skill or 'misc').lower()}:{slug}"
 
 
+def _id(name, idx):
+    """Resolve an item name to its id, applying currency overrides the /mapping omits."""
+    if name in ID_OVERRIDES:
+        return ID_OVERRIDES[name]
+    return idx.get(name, {}).get("id")
+
+
 def normalize(title, kv, idx, now):
     """Map a parsed {{Recipe}} template to the normalized schema, or None to skip."""
     outs = []
@@ -206,7 +217,7 @@ def normalize(title, kv, idx, now):
         name = _clean(kv.get(f"output{i}"))
         if name:
             outs.append({
-                "itemId": idx.get(name, {}).get("id"),
+                "itemId": _id(name, idx),
                 "name": name,
                 "qty": _int(kv.get(f"output{i}quantity"), 1),
                 "variant": _clean(kv.get(f"output{i}subtxt")),
@@ -219,7 +230,7 @@ def normalize(title, kv, idx, now):
         name = _clean(kv.get(f"mat{i}"))
         if name:
             inputs.append({
-                "itemId": idx.get(name, {}).get("id"),
+                "itemId": _id(name, idx),
                 "name": name,
                 "qty": _int(kv.get(f"mat{i}quantity"), 1),
                 "consumed": True,
@@ -234,7 +245,7 @@ def normalize(title, kv, idx, now):
                 "xp": _float(kv.get(f"skill{i}exp")),
                 "boostable": _yes(kv.get(f"skill{i}boostable")),
             })
-    tools = [{"itemId": idx.get(t, {}).get("id"), "name": t, "qty": 1, "consumed": False}
+    tools = [{"itemId": _id(t, idx), "name": t, "qty": 1, "consumed": False}
              for t in WIKILINK.findall(kv.get("tool", ""))]
     quest = _clean(kv.get("quest"))
     return {
