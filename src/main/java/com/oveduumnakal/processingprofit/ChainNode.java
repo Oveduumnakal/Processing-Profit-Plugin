@@ -47,7 +47,9 @@ import lombok.Value;
  *
  * <p>{@code held} is how many units the player owns (partial holdings show against a still-sourced
  * node). {@code truncated} is {@code true} when a craft path existed but display recursion stopped at
- * the depth cap or a cycle. A pure view-model built by {@link ChainTreeBuilder}.
+ * the depth cap or a cycle. {@code tools} names the non-consumed tools/equipment a crafted step needs
+ * (hammer, needle, chisel, …); it is empty for bought or covered leaves. A pure view-model built by
+ * {@link ChainTreeBuilder}.
  */
 @Value
 public class ChainNode
@@ -63,4 +65,5 @@ public class ChainNode
 	long surplus;
 	boolean truncated;
 	List<ChainNode> children;
+	List<String> tools;
 }

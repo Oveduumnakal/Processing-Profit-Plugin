@@ -25,6 +25,7 @@
 package com.oveduumnakal.processingprofit;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,25 +60,29 @@ public final class ChainTreeBuilder
 	public static final int MAX_DEPTH = 6;
 
 	private static final int DEFAULT_LEVEL = 99;
+	private static final List<String> NO_TOOLS = Collections.emptyList();
 
 	private final ChainValuator valuator;
 	private final Map<Integer, Integer> held;
+	private final TreeOptions options;
 	private final ToIntFunction<String> levelFn;
 	private final List<SuccessModifier> active;
 	private final Map<Integer, long[]> totals = new LinkedHashMap<>();
 	private final Map<Integer, long[]> leftovers = new LinkedHashMap<>();
 	private final Map<Integer, String> names = new LinkedHashMap<>();
 
-	private ChainTreeBuilder(ChainValuator valuator, Map<Integer, Integer> held)
+	private ChainTreeBuilder(ChainValuator valuator, Map<Integer, Integer> held, TreeOptions options)
 	{
 		this.valuator = valuator;
 		this.held = held;
+		this.options = options;
 		this.levelFn = valuator.levelFn();
 		this.active = valuator.active();
 	}
 
 	/**
-	 * Builds the scaled make-or-buy breakdown for producing {@code targetQty} of a recipe's product.
+	 * Builds the scaled make-or-buy breakdown for producing {@code targetQty} of a recipe's product, with
+	 * the default (unfiltered) tree options.
 	 *
 	 * @param rec       the recipe whose inputs form the tree roots
 	 * @param valuator  the recursive make-or-buy valuator (fixes the price/level context)
@@ -88,7 +93,26 @@ public final class ChainTreeBuilder
 	public static ChainTree build(Recipe rec, ChainValuator valuator, Map<Integer, Integer> held,
 			long targetQty)
 	{
-		ChainTreeBuilder b = new ChainTreeBuilder(valuator, held);
+		return build(rec, valuator, held, targetQty, TreeOptions.defaults());
+	}
+
+	/**
+	 * Builds the scaled make-or-buy breakdown, applying the pop-out tree's filter {@code options}:
+	 * force-bought items (by id or class) are shown as bought leaves rather than expanded, and expansion
+	 * stops at the options' {@code maxDepth}. Pass an empty {@code held} map to ignore holdings
+	 * ("exclude already-owned" off).
+	 *
+	 * @param rec       the recipe whose inputs form the tree roots
+	 * @param valuator  the recursive make-or-buy valuator (fixes the price/level context)
+	 * @param held      item id to units the player holds (inventory + bank); may be empty, never null
+	 * @param targetQty the number of finished products to source for (at least 1)
+	 * @param options   the force-buy and depth overrides
+	 * @return the tree roots plus the Total materials and Leftovers roll-ups
+	 */
+	public static ChainTree build(Recipe rec, ChainValuator valuator, Map<Integer, Integer> held,
+			long targetQty, TreeOptions options)
+	{
+		ChainTreeBuilder b = new ChainTreeBuilder(valuator, held, options);
 		return b.run(rec, Math.max(1L, targetQty));
 	}
 
@@ -133,7 +157,7 @@ public final class ChainTreeBuilder
 		long surplus = primarySurplus(rec, actions, targetQty);
 		long owned = id > 0 ? ownedOf(id) : 0L;
 		return new ChainNode(id, label, targetQty, false, skill, PriceLookup.UNKNOWN, owned, false, surplus,
-				false, children);
+				false, children, toolNames(rec));
 	}
 
 	private List<ChainNode> childrenOf(Recipe rec, long actions, int depth, Set<Integer> path)
@@ -157,7 +181,15 @@ public final class ChainTreeBuilder
 		{
 			addTotal(itemId, label, qtyNeeded);
 			return new ChainNode(itemId, label, qtyNeeded, false, null, PriceLookup.UNKNOWN, owned, true,
-					0L, false, new ArrayList<>());
+					0L, false, new ArrayList<>(), NO_TOOLS);
+		}
+
+		if (options.forceBuy(itemId, label))
+		{
+			addTotal(itemId, label, qtyNeeded);
+			long unit = valuator.prices().buyPrice(itemId);
+			return new ChainNode(itemId, label, qtyNeeded, true, null, unit, owned, false, 0L, false,
+					new ArrayList<>(), NO_TOOLS);
 		}
 
 		Sourcing s = valuator.cheapest(itemId);
@@ -167,14 +199,14 @@ public final class ChainTreeBuilder
 			addTotal(itemId, label, qtyNeeded);
 			long unit = valuator.prices().buyPrice(itemId);
 			return new ChainNode(itemId, label, qtyNeeded, true, null, unit, owned, false, 0L, false,
-					new ArrayList<>());
+					new ArrayList<>(), NO_TOOLS);
 		}
 
 		Recipe craft = s.getCraftRecipe();
 		String skill = craft.primarySkill() == null ? null : craft.primarySkill().getSkill();
-		if (depth >= MAX_DEPTH || path.contains(itemId))
+		if (depth >= options.getMaxDepth() || path.contains(itemId))
 			return new ChainNode(itemId, label, qtyNeeded, false, skill, PriceLookup.UNKNOWN, owned, false,
-					0L, true, new ArrayList<>());
+					0L, true, new ArrayList<>(), toolNames(craft));
 
 		long shortfall = qtyNeeded - owned;
 		double exp = expectedPrimary(craft);
@@ -183,7 +215,7 @@ public final class ChainTreeBuilder
 			addTotal(itemId, label, qtyNeeded);
 			long unit = valuator.prices().buyPrice(itemId);
 			return new ChainNode(itemId, label, qtyNeeded, true, null, unit, owned, false, 0L, false,
-					new ArrayList<>());
+					new ArrayList<>(), NO_TOOLS);
 		}
 
 		long actions = actionsFor(shortfall, exp);
@@ -197,7 +229,7 @@ public final class ChainTreeBuilder
 		List<ChainNode> children = childrenOf(craft, actions, depth + 1, path);
 		path.remove(itemId);
 		return new ChainNode(itemId, label, qtyNeeded, false, skill, PriceLookup.UNKNOWN, owned, false,
-				surplus, false, children);
+				surplus, false, children, toolNames(craft));
 	}
 
 	/**
@@ -327,5 +359,25 @@ public final class ChainTreeBuilder
 	{
 		SuccessModel model = r.getSuccess();
 		return model == null || model.getType() == SuccessType.ALWAYS;
+	}
+
+	/**
+	 * The names of a recipe's non-consumed tools/equipment (hammer, needle, chisel, …), shown on a crafted
+	 * node so the tree says what each step is made with.
+	 *
+	 * @param r the recipe
+	 * @return the tool names, or an empty list when the recipe needs no tools
+	 */
+	private static List<String> toolNames(Recipe r)
+	{
+		List<ItemStack> tools = r.getTools();
+		if (tools.isEmpty())
+			return NO_TOOLS;
+
+		List<String> names = new ArrayList<>(tools.size());
+		for (ItemStack tool : tools)
+			names.add(tool.getName());
+
+		return names;
 	}
 }
