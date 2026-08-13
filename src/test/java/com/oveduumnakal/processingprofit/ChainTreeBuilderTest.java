@@ -92,6 +92,11 @@ public class ChainTreeBuilderTest
 		return new ItemStack(id, "in-" + id, qty, true);
 	}
 
+	private static ItemStack named(int id, String name, int qty)
+	{
+		return new ItemStack(id, name, qty, true);
+	}
+
 	private static Recipe recipe(int outId, int outQty, ItemStack... inputs)
 	{
 		List<RecipeOutput> outs = Collections.singletonList(new RecipeOutput(outId, "out-" + outId, outQty,
@@ -279,5 +284,72 @@ public class ChainTreeBuilderTest
 
 		MaterialLine left = line(tree.getLeftovers(), 1);
 		assertEquals(1L, left.getQty());
+	}
+
+	@Test
+	public void forceBuyIdShowsBoughtLeafInsteadOfExpanding()
+	{
+		MapPrices prices = new MapPrices()
+				.put(0, 10L, 8L)
+				.put(1, 1000L, 900L)
+				.put(2, 5000L, 4500L);
+		Recipe makeItem1 = recipe(1, 1, in(0, 1));
+		Recipe product = recipe(2, 1, in(1, 1));
+		ChainValuator valuator = valuator(prices, makeItem1, product);
+		TreeOptions opts = new TreeOptions(Collections.singleton(1), Collections.emptySet(),
+				ChainTreeBuilder.MAX_DEPTH);
+
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L, opts);
+
+		ChainNode root = tree.getRoots().get(0);
+		ChainNode node = root.getChildren().get(0);
+		assertTrue(node.isViaBuy());
+		assertEquals(1000L, node.getBuyUnit());
+		assertTrue(node.getChildren().isEmpty());
+		assertEquals(1L, line(tree.getTotals(), 1).getQty());
+	}
+
+	@Test
+	public void forceBuyClassShowsBoughtLeaf()
+	{
+		MapPrices prices = new MapPrices()
+				.put(0, 10L, 8L)
+				.put(1, 1000L, 900L)
+				.put(2, 5000L, 4500L);
+		Recipe makeItem1 = recipe(1, 1, in(0, 1));
+		Recipe product = recipe(2, 1, named(1, "Steel bar", 1));
+		ChainValuator valuator = valuator(prices, makeItem1, product);
+		TreeOptions opts = new TreeOptions(Collections.emptySet(), Collections.singleton(MaterialClass.BAR),
+				ChainTreeBuilder.MAX_DEPTH);
+
+		ChainTree tree = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L, opts);
+
+		ChainNode root = tree.getRoots().get(0);
+		ChainNode node = root.getChildren().get(0);
+		assertTrue(node.isViaBuy());
+		assertTrue(node.getChildren().isEmpty());
+	}
+
+	@Test
+	public void depthOverrideTruncatesEarlierThanDefault()
+	{
+		MapPrices prices = new MapPrices().put(0, 1L, 1L);
+		List<Recipe> recipes = new ArrayList<>();
+		for (int id = 1; id <= 4; id++)
+		{
+			prices.put(id, 100_000L, 90_000L);
+			recipes.add(recipe(id, 1, in(id - 1, 1)));
+		}
+
+		ChainValuator valuator = valuator(prices, recipes.toArray(new Recipe[0]));
+		Recipe product = recipe(5, 1, in(4, 1));
+		TreeOptions deep = new TreeOptions(Collections.emptySet(), Collections.emptySet(), 6);
+		TreeOptions shallow = new TreeOptions(Collections.emptySet(), Collections.emptySet(), 1);
+
+		ChainTree full = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L, deep);
+		ChainTree capped = ChainTreeBuilder.build(product, valuator, Collections.emptyMap(), 1L, shallow);
+
+		assertFalse(anyTruncated(full.getRoots()));
+		assertTrue(anyTruncated(capped.getRoots()));
 	}
 }

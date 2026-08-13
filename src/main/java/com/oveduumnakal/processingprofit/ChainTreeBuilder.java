@@ -62,22 +62,25 @@ public final class ChainTreeBuilder
 
 	private final ChainValuator valuator;
 	private final Map<Integer, Integer> held;
+	private final TreeOptions options;
 	private final ToIntFunction<String> levelFn;
 	private final List<SuccessModifier> active;
 	private final Map<Integer, long[]> totals = new LinkedHashMap<>();
 	private final Map<Integer, long[]> leftovers = new LinkedHashMap<>();
 	private final Map<Integer, String> names = new LinkedHashMap<>();
 
-	private ChainTreeBuilder(ChainValuator valuator, Map<Integer, Integer> held)
+	private ChainTreeBuilder(ChainValuator valuator, Map<Integer, Integer> held, TreeOptions options)
 	{
 		this.valuator = valuator;
 		this.held = held;
+		this.options = options;
 		this.levelFn = valuator.levelFn();
 		this.active = valuator.active();
 	}
 
 	/**
-	 * Builds the scaled make-or-buy breakdown for producing {@code targetQty} of a recipe's product.
+	 * Builds the scaled make-or-buy breakdown for producing {@code targetQty} of a recipe's product, with
+	 * the default (unfiltered) tree options.
 	 *
 	 * @param rec       the recipe whose inputs form the tree roots
 	 * @param valuator  the recursive make-or-buy valuator (fixes the price/level context)
@@ -88,7 +91,26 @@ public final class ChainTreeBuilder
 	public static ChainTree build(Recipe rec, ChainValuator valuator, Map<Integer, Integer> held,
 			long targetQty)
 	{
-		ChainTreeBuilder b = new ChainTreeBuilder(valuator, held);
+		return build(rec, valuator, held, targetQty, TreeOptions.defaults());
+	}
+
+	/**
+	 * Builds the scaled make-or-buy breakdown, applying the pop-out tree's filter {@code options}:
+	 * force-bought items (by id or class) are shown as bought leaves rather than expanded, and expansion
+	 * stops at the options' {@code maxDepth}. Pass an empty {@code held} map to ignore holdings
+	 * ("exclude already-owned" off).
+	 *
+	 * @param rec       the recipe whose inputs form the tree roots
+	 * @param valuator  the recursive make-or-buy valuator (fixes the price/level context)
+	 * @param held      item id to units the player holds (inventory + bank); may be empty, never null
+	 * @param targetQty the number of finished products to source for (at least 1)
+	 * @param options   the force-buy and depth overrides
+	 * @return the tree roots plus the Total materials and Leftovers roll-ups
+	 */
+	public static ChainTree build(Recipe rec, ChainValuator valuator, Map<Integer, Integer> held,
+			long targetQty, TreeOptions options)
+	{
+		ChainTreeBuilder b = new ChainTreeBuilder(valuator, held, options);
 		return b.run(rec, Math.max(1L, targetQty));
 	}
 
@@ -160,6 +182,14 @@ public final class ChainTreeBuilder
 					0L, false, new ArrayList<>());
 		}
 
+		if (options.forceBuy(itemId, label))
+		{
+			addTotal(itemId, label, qtyNeeded);
+			long unit = valuator.prices().buyPrice(itemId);
+			return new ChainNode(itemId, label, qtyNeeded, true, null, unit, owned, false, 0L, false,
+					new ArrayList<>());
+		}
+
 		Sourcing s = valuator.cheapest(itemId);
 		boolean canMake = !s.isViaBuy() && s.getCraftRecipe() != null && s.obtainable();
 		if (!canMake)
@@ -172,7 +202,7 @@ public final class ChainTreeBuilder
 
 		Recipe craft = s.getCraftRecipe();
 		String skill = craft.primarySkill() == null ? null : craft.primarySkill().getSkill();
-		if (depth >= MAX_DEPTH || path.contains(itemId))
+		if (depth >= options.getMaxDepth() || path.contains(itemId))
 			return new ChainNode(itemId, label, qtyNeeded, false, skill, PriceLookup.UNKNOWN, owned, false,
 					0L, true, new ArrayList<>());
 
