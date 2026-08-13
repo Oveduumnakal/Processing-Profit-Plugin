@@ -29,26 +29,38 @@ import java.util.List;
 import lombok.Value;
 
 /**
- * One node in the make-or-buy tree shown in the detail view: an input {@code label} and per-craft
- * {@code qty}, whether the cheapest source is to {@code viaBuy} it or craft it, and the three costs so
- * the view can highlight the chosen option and show the alternative &mdash; the {@code chosenCost}, the
- * {@code buyCost} and the {@code craftCost} (each {@code -1} when that option is unavailable). When the
- * cheapest source is to craft it, {@code children} holds that recipe's inputs recursed the same way;
- * {@code truncated} is {@code true} when a craft path existed but display recursion stopped at the depth
- * cap or a cycle. A pure view-model built by {@link ChainTreeBuilder}.
+ * One node in the make-or-buy tree shown in the detail view: an input item ({@code itemId} +
+ * {@code label}) and the {@code qty} the tree needs of it, scaled to the number of finished products.
+ * The node is rendered one of three ways:
+ *
+ * <ul>
+ *   <li><b>Covered</b> ({@code covered} is {@code true}) &mdash; the player already holds enough
+ *       ({@code held >= qty}); shown struck through and not expanded, since nothing need be sourced.</li>
+ *   <li><b>Made</b> ({@code viaSkill} is non-null) &mdash; cheaper to craft; {@code viaSkill} is the
+ *       skill it is made with and {@code children} holds its recipe's inputs recursed the same way.
+ *       {@code surplus} is how many extra units this step produces beyond what the tree consumes (a
+ *       batch overshoot, also rolled into the tree's leftovers).</li>
+ *   <li><b>Bought</b> ({@code viaBuy} is {@code true}, {@code viaSkill} null) &mdash; a leaf bought or
+ *       gathered; {@code buyUnit} is the per-unit buy price ({@link PriceLookup#UNKNOWN} when unpriced
+ *       or gathered).</li>
+ * </ul>
+ *
+ * <p>{@code held} is how many units the player owns (partial holdings show against a still-sourced
+ * node). {@code truncated} is {@code true} when a craft path existed but display recursion stopped at
+ * the depth cap or a cycle. A pure view-model built by {@link ChainTreeBuilder}.
  */
 @Value
 public class ChainNode
 {
-	/** Cost sentinel for an unavailable buy/craft/chosen option. */
-	public static final long UNAVAILABLE = -1L;
-
+	int itemId;
 	String label;
-	int qty;
+	long qty;
 	boolean viaBuy;
-	long chosenCost;
-	long buyCost;
-	long craftCost;
+	String viaSkill;
+	long buyUnit;
+	long held;
+	boolean covered;
+	long surplus;
 	boolean truncated;
 	List<ChainNode> children;
 }

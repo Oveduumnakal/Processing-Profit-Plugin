@@ -31,32 +31,45 @@ import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.GridBagLayout;
+import java.awt.GridLayout;
+import java.awt.Image;
+import java.awt.Insets;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
-import javax.inject.Inject;
-import javax.inject.Singleton;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.Scrollable;
@@ -67,59 +80,75 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.plaf.ScrollBarUI;
 
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.materialtabs.MaterialTab;
 import net.runelite.client.ui.components.materialtabs.MaterialTabGroup;
 import net.runelite.client.ui.laf.RuneLiteScrollBarUI;
+import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.QuantityFormatter;
 
 /**
- * The Processing Profit sidebar: sourcing-mode and valuation-lens selectors, an active-modifier status
- * line, a filter/sort bar (search, skill, gating, members/F2P, sort key, density), and four tabs
- * &mdash; On-hand, Watchlist, Browse and Shopping. Each tab holds the full {@link RecipeRow} set pushed
- * by the plugin and renders
+ * The Processing Profit sidebar: an active-modifier status line, a filter/sort bar (search, skill, sort
+ * key, density &mdash; sourcing, valuation, gating and members live in the plugin settings), and four
+ * tabs
+ * &mdash; On-hand, Watchlist, Browse and Shopping. The skill filter lists only the skills present in the
+ * active tab. Each tab holds the full {@link RecipeRow} set pushed by the plugin and renders
  * a filtered, sorted, display-capped view locally so sorting and searching are instant. Uses the
  * RuneLite fonts, colour scheme and themed scrollbar so it scales with the client.
  */
-@Singleton
 public class ProcessingProfitPanel extends PluginPanel
 {
 	private static final int MAX_DISPLAY = 100;
 	private static final Color STALE_DOT = new Color(0xF0, 0xA3, 0x30);
 	private static final Color WARN_TRIANGLE = new Color(0xD0, 0x42, 0x42);
+	private static final Font ICON_FONT = FontManager.getRunescapeSmallFont().deriveFont(8f);
+	private static final Color HOVER_TINT = new Color(0x46, 0x4B, 0x50);
 	private static final Color SP_HIGH = new Color(100, 220, 100);
 	private static final Color SP_LOW = new Color(220, 100, 100);
 	private static final Color SP_GOLD = new Color(255, 200, 0);
+	private static final Color SP_DIVIDER = new Color(80, 80, 80);
 	private static final Color SP_MUTED = new Color(150, 150, 150);
+	private static final int TREE_INDENT = 14;
+	private static final int TREE_TOGGLE_W = 12;
+	private static final int TREE_ICON_W = 20;
+	private static final int TREE_ROW_H = 18;
 	private static final Color STAR_ON = new Color(0xF0, 0xC0, 0x40);
 	private static final Color LOCKED_FG = new Color(0x80, 0x80, 0x80);
 	private static final String STALE_TOOLTIP =
-			"Price may be stale (from the 1h fallback or a low-volume item)";
-	private static final String[] MODE_LABELS = {"On-hand", "Buy to order", "Hybrid"};
-	private static final SourcingMode[] MODES =
-			{SourcingMode.ON_HAND, SourcingMode.BUY_TO_ORDER, SourcingMode.HYBRID};
+			"Price is from the last recorded trade (no recent 5m/1h average) and may be out of date";
 	private static final String[] SORT_LABELS =
 			{"Profit/ea", "GP/hr", "XP/hr", "ROI %", "Success %", "Level", "Volume", "Makeable"};
-	private static final String ALL_SKILLS = "All skills";
-	private static final int GATING_HIDE = 0;
-	private static final int GATING_GREY = 1;
-	private static final int MEMBERS_ALL = 0;
-	private static final int MEMBERS_F2P = 1;
-	private static final int MEMBERS_P2P = 2;
+	private static final String MISC_SKILL = "Miscellaneous";
 
-	private final JComboBox<String> modeSelector = new JComboBox<>(MODE_LABELS);
-	private final JComboBox<String> valuationSelector = new JComboBox<>(valuationLabels());
-	private final JComboBox<String> skillSelector = new JComboBox<>(new String[]{ALL_SKILLS});
-	private final JComboBox<String> gatingSelector =
-			new JComboBox<>(new String[]{"Hide locked", "Grey locked", "Show all"});
-	private final JComboBox<String> membersSelector =
-			new JComboBox<>(new String[]{"All worlds", "F2P only", "Members only"});
-	private final JComboBox<String> sortSelector = new JComboBox<>(SORT_LABELS);
-	private final JComboBox<String> densitySelector = new JComboBox<>(new String[]{"Cards", "Compact"});
-	private final JTextField searchField = new JTextField();
+	private static final String K_SORT_INDEX = "panelFilterSortIndex";
+	private static final String K_SORT_REVERSED = "panelFilterSortReversed";
+	private static final String K_COMPACT = "panelFilterCompact";
+	private static final String K_DISABLED_SKILLS = "panelFilterDisabledSkills";
+	private static final String K_SHOW_LOW_VOLUME = "panelFilterShowLowVolume";
+	private static final String K_SHOW_STALE = "panelFilterShowStale";
+	private static final String K_SHOW_THROTTLED = "panelFilterShowThrottled";
+
+	private final ProcessingProfitConfig config;
+	private final ConfigManager configManager;
+	private final ItemManager itemManager;
+	private final JLabel sortToggle = new JLabel("⇅", SwingConstants.CENTER);
+	private final JLabel filterToggle = new JLabel();
+	private final JLabel compactToggle = new JLabel("≣", SwingConstants.CENTER);
+	private final JTextField searchField = new PlaceholderTextField("Search ...");
 	private final JLabel modifierLine = new JLabel("Modifiers: none");
+
+	private int sortIndex;
+	private boolean sortReversed;
+	private boolean compact;
+	private final List<String> skillOptions = new ArrayList<>();
+	private final Set<String> disabledSkills = new HashSet<>();
+	private boolean showLowVolume = true;
+	private boolean showStale = true;
+	private boolean showThrottled = true;
 
 	private static final int DEFAULT_SHOPPING_QTY = 28;
 
@@ -134,18 +163,17 @@ public class ProcessingProfitPanel extends PluginPanel
 	private List<RecipeRow> browseData = Collections.emptyList();
 	private List<RecipeRow> onHandData = Collections.emptyList();
 	private List<RecipeRow> watchlistData = Collections.emptyList();
+	private JPanel activeRows = onHandRows;
 	private ShoppingList shoppingList = new ShoppingList(Collections.emptyList(), 0L, 0, true);
 	private List<String> shoppingSummary = Collections.emptyList();
 
 	private final JPanel center = new JPanel(new CardLayout());
 	private final JPanel detailHolder = new JPanel(new BorderLayout());
 
+	private JPanel headerPanel;
 	private MaterialTabGroup tabGroup;
 	private MaterialTab shoppingTab;
 
-	private Consumer<SourcingMode> modeListener;
-	private Consumer<ValuationLens> valuationListener;
-	private boolean syncingLens;
 	private Consumer<RecipeRow> selectionListener;
 	private Consumer<ShoppingRequest> shoppingAddListener;
 	private Consumer<RecipeRow> pinToggleListener;
@@ -153,15 +181,22 @@ public class ProcessingProfitPanel extends PluginPanel
 	private Set<String> pinnedIds = Collections.emptySet();
 	private RecipeRow detailRow;
 	private RecipeDetail currentDetail;
-	private boolean rebuildingSkills;
 
 	/**
 	 * Builds the panel layout.
+	 *
+	 * @param config        the plugin config, read for the gating and members display filters
+	 * @param configManager persists the toolbar filter/sort/compact state across sessions
+	 * @param itemManager   supplies item icons for the detail view
 	 */
-	@Inject
-	public ProcessingProfitPanel()
+	public ProcessingProfitPanel(ProcessingProfitConfig config, ConfigManager configManager,
+			ItemManager itemManager)
 	{
 		super(false);
+		this.config = config;
+		this.configManager = configManager;
+		this.itemManager = itemManager;
+		loadFilterState();
 		setLayout(new BorderLayout());
 		setBorder(new EmptyBorder(10, 8, 8, 8));
 		setBackground(ColorScheme.DARK_GRAY_COLOR);
@@ -175,6 +210,10 @@ public class ProcessingProfitPanel extends PluginPanel
 		MaterialTab watchlist = new MaterialTab("Watch", tabGroup, scroll(watchlistRows));
 		MaterialTab browse = new MaterialTab("Browse", tabGroup, scroll(browseRows));
 		shoppingTab = new MaterialTab("Shop", tabGroup, scroll(shoppingRows));
+		onHand.setOnSelectEvent(() -> selectTab(onHandRows));
+		watchlist.setOnSelectEvent(() -> selectTab(watchlistRows));
+		browse.setOnSelectEvent(() -> selectTab(browseRows));
+		shoppingTab.setOnSelectEvent(() -> selectTab(shoppingRows));
 		tabGroup.addTab(onHand);
 		tabGroup.addTab(watchlist);
 		tabGroup.addTab(browse);
@@ -185,7 +224,8 @@ public class ProcessingProfitPanel extends PluginPanel
 		center.add(display, "list");
 		center.add(detailHolder, "detail");
 
-		add(header(tabGroup), BorderLayout.NORTH);
+		headerPanel = header(tabGroup);
+		add(headerPanel, BorderLayout.NORTH);
 		add(center, BorderLayout.CENTER);
 
 		wireControls();
@@ -196,17 +236,6 @@ public class ProcessingProfitPanel extends PluginPanel
 
 	private void wireControls()
 	{
-		modeSelector.addActionListener(e -> fireModeChanged());
-		valuationSelector.addActionListener(e -> fireValuationChanged());
-		sortSelector.addActionListener(e -> renderAll());
-		densitySelector.addActionListener(e -> renderAll());
-		gatingSelector.addActionListener(e -> renderAll());
-		membersSelector.addActionListener(e -> renderAll());
-		skillSelector.addActionListener(e ->
-		{
-			if (!rebuildingSkills)
-				renderAll();
-		});
 		searchField.getDocument().addDocumentListener(new DocumentListener()
 		{
 			@Override
@@ -235,42 +264,404 @@ public class ProcessingProfitPanel extends PluginPanel
 		header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
 		header.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		styleCombo(modeSelector);
-		styleCombo(valuationSelector);
-		styleCombo(skillSelector);
-		styleCombo(gatingSelector);
-		styleCombo(membersSelector);
-		styleCombo(sortSelector);
-		styleCombo(densitySelector);
 		styleSearch(searchField);
 
-		header.add(labelledRow("Sourcing", modeSelector));
-		header.add(labelledRow("Valuation", valuationSelector));
-
-		modifierLine.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		modifierLine.setFont(FontManager.getRunescapeSmallFont());
-		modifierLine.setAlignmentX(Component.LEFT_ALIGNMENT);
-		modifierLine.setBorder(new EmptyBorder(6, 0, 0, 0));
-		header.add(modifierLine);
-
-		header.add(labelledRow("Search", searchField));
-		header.add(labelledRow("Skill", skillSelector));
-		header.add(labelledRow("Gating", gatingSelector));
-		header.add(labelledRow("Members", membersSelector));
-		header.add(labelledRow("Sort", sortSelector));
-		header.add(labelledRow("View", densitySelector));
+		header.add(searchToolbarRow());
 
 		tabGroup.setAlignmentX(Component.LEFT_ALIGNMENT);
 		header.add(tabGroup);
 		return header;
 	}
 
-	private static void styleCombo(JComboBox<String> combo)
+	/**
+	 * Builds the single header control row: the search bar (no label) filling the width, followed by the
+	 * three toolbar toggles on the right.
+	 *
+	 * @return the search + toolbar row
+	 */
+	private JPanel searchToolbarRow()
 	{
-		combo.setFont(FontManager.getRunescapeSmallFont());
-		combo.setFocusable(false);
-		combo.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		combo.setForeground(Color.WHITE);
+		JPanel row = new JPanel(new BorderLayout(4, 0));
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		row.setBorder(new EmptyBorder(4, 0, 0, 0));
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.add(searchField, BorderLayout.CENTER);
+		row.add(toolbar(), BorderLayout.EAST);
+		capHeight(row);
+		return row;
+	}
+
+	/**
+	 * Builds the Stockpile-style toolbar: sort (⇅ / direction arrow), filter (funnel, by skill), and
+	 * compact (≣) toggles laid out horizontally. Each is a glyph/icon that hover-tints grey↔gold and
+	 * highlights gold while active.
+	 *
+	 * @return the toolbar toggles panel
+	 */
+	private JPanel toolbar()
+	{
+		styleToggle(sortToggle, "Sort", this::showSortMenu);
+		styleToggle(filterToggle, "Filter by skill", this::showSkillMenu);
+		styleToggle(compactToggle, "Toggle compact view", this::toggleCompact);
+		sortToggle.setFont(FontManager.getRunescapeBoldFont());
+		compactToggle.setFont(FontManager.getRunescapeBoldFont().deriveFont(14f));
+
+		installToggleHover(sortToggle, () -> sortIndex != 0 || sortReversed,
+				sortToggle::setForeground, this::updateSortToggle);
+		installToggleHover(filterToggle, this::filterActive,
+				color -> filterToggle.setIcon(filterIcon(color)), this::updateFilterToggle);
+		installToggleHover(compactToggle, () -> compact,
+				compactToggle::setForeground, this::updateCompactToggle);
+
+		updateSortToggle();
+		updateFilterToggle();
+		updateCompactToggle();
+
+		JPanel toggles = new JPanel();
+		toggles.setLayout(new BoxLayout(toggles, BoxLayout.X_AXIS));
+		toggles.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		toggles.add(sortToggle);
+		toggles.add(filterToggle);
+		toggles.add(compactToggle);
+		return toggles;
+	}
+
+	private static void styleToggle(JLabel toggle, String tooltip, Runnable onClick)
+	{
+		toggle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		toggle.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		toggle.setBorder(new EmptyBorder(2, 3, 2, 3));
+		toggle.setToolTipText(tooltip);
+		toggle.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				onClick.run();
+			}
+		});
+	}
+
+	/**
+	 * Opens the sort menu: each sort key as a checkable entry. Clicking the active key toggles its
+	 * direction; clicking another key selects it (default descending).
+	 */
+	private void showSortMenu()
+	{
+		JPopupMenu menu = new JPopupMenu();
+		for (int i = 0; i < SORT_LABELS.length; i++)
+		{
+			boolean active = i == sortIndex;
+			String arrow = active ? (sortReversed ? "  ↑" : "  ↓") : "";
+			JCheckBoxMenuItem entry = new JCheckBoxMenuItem(SORT_LABELS[i] + arrow, active);
+			entry.setFont(FontManager.getRunescapeSmallFont());
+			final int index = i;
+			entry.addActionListener(e ->
+			{
+				if (index == sortIndex)
+				{
+					sortReversed = !sortReversed;
+				}
+				else
+				{
+					sortIndex = index;
+					sortReversed = false;
+				}
+
+				updateSortToggle();
+				saveFilterState();
+				renderAll();
+			});
+			menu.add(entry);
+		}
+
+		menu.show(sortToggle, 0, sortToggle.getHeight());
+	}
+
+	/**
+	 * Opens the multi-select filter menu: "Select all"/"Select none", a check per skill in the active tab
+	 * (all checked = show everything; e.g. uncheck Runecrafting for "all but Runecrafting"), then a warning
+	 * section that shows/hides low-volume, stale-priced, and buy-limit-throttled rows. The menu stays open
+	 * across individual toggles.
+	 */
+	private void showSkillMenu()
+	{
+		JPopupMenu menu = new JPopupMenu();
+
+		JMenuItem all = new JMenuItem("Select all");
+		all.setFont(FontManager.getRunescapeSmallFont());
+		all.addActionListener(e ->
+		{
+			disabledSkills.clear();
+			updateFilterToggle();
+			saveFilterState();
+			renderAll();
+		});
+		menu.add(all);
+
+		JMenuItem none = new JMenuItem("Select none");
+		none.setFont(FontManager.getRunescapeSmallFont());
+		none.addActionListener(e ->
+		{
+			disabledSkills.addAll(skillOptions);
+			updateFilterToggle();
+			saveFilterState();
+			renderAll();
+		});
+		menu.add(none);
+		menu.addSeparator();
+
+		for (String option : skillOptions)
+			menu.add(skillCheckItem(option));
+
+		menu.addSeparator();
+		menu.add(warningCheckItem("Show Low Trade Vol", showLowVolume, v -> showLowVolume = v));
+		menu.add(warningCheckItem("Show Stale Pricing", showStale, v -> showStale = v));
+		menu.add(warningCheckItem("Show Buy-limit throttled", showThrottled, v -> showThrottled = v));
+
+		menu.show(filterToggle, 0, filterToggle.getHeight());
+	}
+
+	/**
+	 * Builds a checkbox menu item that keeps the popup open on click (so several can be toggled in one
+	 * visit) and, if it maps to state, updates it. Callers add the state wiring via an action listener.
+	 *
+	 * @param label   the item label
+	 * @param checked the initial checked state
+	 * @return the stay-open checkbox item
+	 */
+	private static JCheckBoxMenuItem stayOpenCheck(String label, boolean checked)
+	{
+		JCheckBoxMenuItem entry = new JCheckBoxMenuItem(label, checked)
+		{
+			@Override
+			protected void processMouseEvent(MouseEvent e)
+			{
+				if (e.getID() == MouseEvent.MOUSE_RELEASED && contains(e.getPoint()))
+				{
+					doClick();
+					setArmed(true);
+				}
+				else
+				{
+					super.processMouseEvent(e);
+				}
+			}
+		};
+		entry.setFont(FontManager.getRunescapeSmallFont());
+		return entry;
+	}
+
+	/**
+	 * Builds a skill checkbox for {@link #showSkillMenu()} that toggles {@link #disabledSkills} without
+	 * closing the popup.
+	 *
+	 * @param option the skill name
+	 * @return the stay-open checkbox item
+	 */
+	private JCheckBoxMenuItem skillCheckItem(String option)
+	{
+		JCheckBoxMenuItem entry = stayOpenCheck(option, !disabledSkills.contains(option));
+		entry.addActionListener(e ->
+		{
+			if (entry.isSelected())
+				disabledSkills.remove(option);
+			else
+				disabledSkills.add(option);
+
+			updateFilterToggle();
+			saveFilterState();
+			renderAll();
+		});
+		return entry;
+	}
+
+	/**
+	 * Builds a warning-filter checkbox that shows or hides rows carrying a warning (stale price, low
+	 * volume, buy-limit throttled), keeping the popup open.
+	 *
+	 * @param label   the item label
+	 * @param checked the initial checked state (checked = show)
+	 * @param setter  applies the new state to the backing field
+	 * @return the stay-open checkbox item
+	 */
+	private JCheckBoxMenuItem warningCheckItem(String label, boolean checked, Consumer<Boolean> setter)
+	{
+		JCheckBoxMenuItem entry = stayOpenCheck(label, checked);
+		entry.addActionListener(e ->
+		{
+			setter.accept(entry.isSelected());
+			updateFilterToggle();
+			saveFilterState();
+			renderAll();
+		});
+		return entry;
+	}
+
+	private void toggleCompact()
+	{
+		compact = !compact;
+		updateCompactToggle();
+		saveFilterState();
+		renderAll();
+	}
+
+	private void updateSortToggle()
+	{
+		if (sortIndex == 0 && !sortReversed)
+		{
+			sortToggle.setText("⇅");
+			sortToggle.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		}
+		else
+		{
+			sortToggle.setText(sortReversed ? "↑" : "↓");
+			sortToggle.setForeground(SP_GOLD);
+		}
+	}
+
+	private void updateFilterToggle()
+	{
+		filterToggle.setIcon(filterIcon(filterActive() ? SP_GOLD : ColorScheme.LIGHT_GRAY_COLOR));
+	}
+
+	/**
+	 * @return whether any filter is narrowing the list: a skill is unchecked, or a warning class
+	 *     (low volume, stale, throttled) is hidden
+	 */
+	private boolean filterActive()
+	{
+		return !disabledSkills.isEmpty() || !showLowVolume || !showStale || !showThrottled;
+	}
+
+	/**
+	 * Loads the persisted toolbar state (sort key/direction, compact density, disabled skills, warning
+	 * toggles) from the config so filters survive a client restart. Missing keys keep the field defaults.
+	 */
+	private void loadFilterState()
+	{
+		if (configManager == null)
+			return;
+
+		sortIndex = clampSort(parseIntOr(read(K_SORT_INDEX), 0));
+		sortReversed = "true".equals(read(K_SORT_REVERSED));
+		compact = "true".equals(read(K_COMPACT));
+		showLowVolume = !"false".equals(read(K_SHOW_LOW_VOLUME));
+		showStale = !"false".equals(read(K_SHOW_STALE));
+		showThrottled = !"false".equals(read(K_SHOW_THROTTLED));
+
+		disabledSkills.clear();
+		String csv = read(K_DISABLED_SKILLS);
+		if (csv != null && !csv.isEmpty())
+		{
+			for (String s : csv.split(","))
+				if (!s.trim().isEmpty())
+					disabledSkills.add(s.trim());
+		}
+	}
+
+	/**
+	 * Writes the current toolbar state to the config. Called on every filter/sort/compact change so the
+	 * next session restores it.
+	 */
+	private void saveFilterState()
+	{
+		if (configManager == null)
+			return;
+
+		String group = ProcessingProfitConfig.GROUP;
+		configManager.setConfiguration(group, K_SORT_INDEX, Integer.toString(sortIndex));
+		configManager.setConfiguration(group, K_SORT_REVERSED, Boolean.toString(sortReversed));
+		configManager.setConfiguration(group, K_COMPACT, Boolean.toString(compact));
+		configManager.setConfiguration(group, K_SHOW_LOW_VOLUME, Boolean.toString(showLowVolume));
+		configManager.setConfiguration(group, K_SHOW_STALE, Boolean.toString(showStale));
+		configManager.setConfiguration(group, K_SHOW_THROTTLED, Boolean.toString(showThrottled));
+		configManager.setConfiguration(group, K_DISABLED_SKILLS, String.join(",", disabledSkills));
+	}
+
+	private String read(String key)
+	{
+		return configManager.getConfiguration(ProcessingProfitConfig.GROUP, key);
+	}
+
+	private static int parseIntOr(String value, int fallback)
+	{
+		if (value == null)
+			return fallback;
+
+		try
+		{
+			return Integer.parseInt(value.trim());
+		}
+		catch (NumberFormatException e)
+		{
+			return fallback;
+		}
+	}
+
+	private static int clampSort(int index)
+	{
+		if (index < 0)
+			return 0;
+
+		if (index >= SORT_LABELS.length)
+			return SORT_LABELS.length - 1;
+
+		return index;
+	}
+
+	private void updateCompactToggle()
+	{
+		compactToggle.setForeground(compact ? SP_GOLD : ColorScheme.LIGHT_GRAY_COLOR);
+	}
+
+	/**
+	 * Installs grey↔gold hover colouring on a toolbar toggle: an inactive (grey) toggle turns gold
+	 * while hovered, an active (gold) toggle turns grey, and its resting colour is repainted on exit.
+	 *
+	 * @param toggle   the toggle to wire
+	 * @param selected whether the toggle is currently active
+	 * @param apply    paints the toggle a colour ({@code setForeground} for glyphs, {@code setIcon} for icons)
+	 * @param restore  repaints the toggle's resting colour
+	 */
+	private static void installToggleHover(JLabel toggle, BooleanSupplier selected,
+			Consumer<Color> apply, Runnable restore)
+	{
+		toggle.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				apply.accept(selected.getAsBoolean() ? ColorScheme.LIGHT_GRAY_COLOR : SP_GOLD);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				restore.run();
+			}
+		});
+	}
+
+	/**
+	 * Paints a small funnel (filter) icon in the given colour: a wide top bar tapering to a stem.
+	 *
+	 * @param color the icon colour
+	 * @return the funnel icon
+	 */
+	private static Icon filterIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+		g.fillPolygon(
+				new int[]{1, size - 1, size / 2 + 1, size / 2 + 1, size / 2 - 1, size / 2 - 1},
+				new int[]{2, 2, size / 2, size - 1, size - 1, size / 2},
+				6);
+		g.dispose();
+		return new ImageIcon(img);
 	}
 
 	private static void styleSearch(JTextField field)
@@ -280,22 +671,6 @@ public class ProcessingProfitPanel extends PluginPanel
 		field.setForeground(Color.WHITE);
 		field.setCaretColor(Color.WHITE);
 		field.setBorder(new EmptyBorder(3, 5, 3, 5));
-	}
-
-	private static JPanel labelledRow(String text, JComponent field)
-	{
-		JPanel row = new JPanel(new BorderLayout(8, 0));
-		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		row.setBorder(new EmptyBorder(4, 0, 0, 0));
-		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-		JLabel label = new JLabel(text);
-		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
-		label.setFont(FontManager.getRunescapeSmallFont());
-		row.add(label, BorderLayout.WEST);
-		row.add(field, BorderLayout.CENTER);
-		capHeight(row);
-		return row;
 	}
 
 	private static JPanel listPanel()
@@ -322,6 +697,38 @@ public class ProcessingProfitPanel extends PluginPanel
 		vertical.setUI((ScrollBarUI) RuneLiteScrollBarUI.createUI(vertical));
 		vertical.setUnitIncrement(16);
 		return scroll;
+	}
+
+	/**
+	 * A text field that paints faint placeholder text while it is empty (Swing has no built-in
+	 * placeholder). The placeholder is painted, not inserted, so {@code getText()} stays empty.
+	 */
+	private static final class PlaceholderTextField extends JTextField
+	{
+		private final String placeholder;
+
+		private PlaceholderTextField(String placeholder)
+		{
+			this.placeholder = placeholder;
+		}
+
+		@Override
+		protected void paintComponent(Graphics g)
+		{
+			super.paintComponent(g);
+			if (!getText().isEmpty())
+				return;
+
+			Graphics2D g2 = (Graphics2D) g.create();
+			g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			g2.setColor(SP_MUTED);
+			g2.setFont(getFont());
+			Insets insets = getInsets();
+			FontMetrics fm = g2.getFontMetrics();
+			int y = (getHeight() - fm.getHeight()) / 2 + fm.getAscent();
+			g2.drawString(placeholder, insets.left, y);
+			g2.dispose();
+		}
 	}
 
 	/**
@@ -400,16 +807,6 @@ public class ProcessingProfitPanel extends PluginPanel
 	}
 
 	/**
-	 * Registers a callback fired when the sourcing mode changes.
-	 *
-	 * @param listener the callback, invoked with the newly selected mode
-	 */
-	public void setModeListener(Consumer<SourcingMode> listener)
-	{
-		this.modeListener = listener;
-	}
-
-	/**
 	 * Registers a callback fired when a recipe row is clicked, so the plugin can build and push its
 	 * {@link RecipeDetail} breakdown.
 	 *
@@ -420,65 +817,12 @@ public class ProcessingProfitPanel extends PluginPanel
 		this.selectionListener = listener;
 	}
 
-	/**
-	 * The currently selected sourcing mode.
-	 *
-	 * @return the selected mode
-	 */
-	public SourcingMode selectedMode()
+	private boolean selectTab(JPanel rows)
 	{
-		return MODES[modeSelector.getSelectedIndex()];
-	}
-
-	private void fireModeChanged()
-	{
-		if (modeListener != null)
-			modeListener.accept(selectedMode());
-	}
-
-	private static String[] valuationLabels()
-	{
-		ValuationLens[] lenses = ValuationLens.values();
-		String[] labels = new String[lenses.length];
-		for (int i = 0; i < lenses.length; i++)
-			labels[i] = lenses[i].toString();
-
-		return labels;
-	}
-
-	/**
-	 * Registers a callback fired when the valuation lens changes, so the plugin can switch how items are
-	 * priced and rebuild.
-	 *
-	 * @param listener the callback, invoked with the newly selected lens
-	 */
-	public void setValuationListener(Consumer<ValuationLens> listener)
-	{
-		this.valuationListener = listener;
-	}
-
-	/**
-	 * Sets the selected valuation lens without firing the change listener, so the selector can be synced
-	 * to the current config value.
-	 *
-	 * @param lens the lens to show as selected
-	 */
-	public void setValuationLens(ValuationLens lens)
-	{
-		SwingUtilities.invokeLater(() ->
-		{
-			syncingLens = true;
-			valuationSelector.setSelectedIndex(lens.ordinal());
-			syncingLens = false;
-		});
-	}
-
-	private void fireValuationChanged()
-	{
-		if (syncingLens || valuationListener == null)
-			return;
-
-		valuationListener.accept(ValuationLens.values()[valuationSelector.getSelectedIndex()]);
+		activeRows = rows;
+		rebuildSkillOptions();
+		renderAll();
+		return true;
 	}
 
 	private void fireSelection(RecipeRow row)
@@ -583,6 +927,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		{
 			onHandData = rows == null ? Collections.emptyList() : rows;
 			tabLimit.remove(onHandRows);
+			rebuildSkillOptions();
 			renderTab(onHandRows, onHandData);
 		});
 	}
@@ -598,6 +943,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		{
 			watchlistData = rows == null ? Collections.emptyList() : rows;
 			tabLimit.remove(watchlistRows);
+			rebuildSkillOptions();
 			renderTab(watchlistRows, watchlistData);
 		});
 	}
@@ -808,7 +1154,6 @@ public class ProcessingProfitPanel extends PluginPanel
 			if (wrap != null)
 				wrap.showList();
 
-			boolean compact = densitySelector.getSelectedIndex() == 1;
 			int limit = tabLimit.getOrDefault(container, MAX_DISPLAY);
 			int shown = Math.min(view.size(), limit);
 			for (int i = 0; i < shown; i++)
@@ -829,7 +1174,7 @@ public class ProcessingProfitPanel extends PluginPanel
 
 	private JComponent moreRow(JPanel container, List<RecipeRow> data, int remaining)
 	{
-		JLabel more = new JLabel("… and " + remaining + " more — click to show all");
+		JLabel more = new JLabel("… and " + remaining + " more");
 		more.setForeground(ColorScheme.BRAND_ORANGE);
 		more.setFont(FontManager.getRunescapeSmallFont());
 		more.setBorder(new EmptyBorder(8, 2, 8, 2));
@@ -858,24 +1203,29 @@ public class ProcessingProfitPanel extends PluginPanel
 	{
 		String rawQuery = searchField.getText().trim();
 		String query = rawQuery.toLowerCase();
-		String skill = (String) skillSelector.getSelectedItem();
-		boolean allSkills = skill == null || ALL_SKILLS.equals(skill);
+		boolean skillFilterActive = !disabledSkills.isEmpty();
 
-		boolean hideLocked = gatingSelector.getSelectedIndex() == GATING_HIDE;
-		int membersFilter = membersSelector.getSelectedIndex();
+		boolean hideLocked = config.gatingMode() == GatingMode.HIDE;
+		boolean showMembers = config.showMembers();
 		List<RecipeRow> out = new ArrayList<>();
 		for (RecipeRow row : data)
 		{
-			if (!allSkills && !skill.equalsIgnoreCase(row.getSkill()))
+			if (skillFilterActive && !hasEnabledSkill(row))
+				continue;
+
+			if (!showLowVolume && row.isLowVolume())
+				continue;
+
+			if (!showStale && row.isStale())
+				continue;
+
+			if (!showThrottled && row.isThrottled())
 				continue;
 
 			if (hideLocked && row.isLocked())
 				continue;
 
-			if (membersFilter == MEMBERS_F2P && row.isMembers())
-				continue;
-
-			if (membersFilter == MEMBERS_P2P && !row.isMembers())
+			if (!showMembers && row.isMembers())
 				continue;
 
 			if (!query.isEmpty() && !row.getProduct().toLowerCase().contains(query))
@@ -884,7 +1234,11 @@ public class ProcessingProfitPanel extends PluginPanel
 			out.add(row);
 		}
 
-		out.sort(comparatorFor(sortSelector.getSelectedIndex()));
+		Comparator<RecipeRow> comparator = comparatorFor(sortIndex);
+		if (sortReversed)
+			comparator = comparator.reversed();
+
+		out.sort(comparator);
 		return out;
 	}
 
@@ -933,27 +1287,65 @@ public class ProcessingProfitPanel extends PluginPanel
 		};
 	}
 
+	/**
+	 * @param row the row to test
+	 * @return whether the row has at least one skill that is not disabled in the skill filter. A row
+	 *     with no skill is treated as {@link #MISC_SKILL}, so it hides only when Miscellaneous is
+	 *     unchecked; a row whose every skill is unchecked is hidden, so "Select none" empties the list.
+	 */
+	private boolean hasEnabledSkill(RecipeRow row)
+	{
+		List<String> skills = row.getSkills();
+		if (skills != null && !skills.isEmpty())
+		{
+			for (String s : skills)
+				if (!disabledSkills.contains(s))
+					return true;
+
+			return false;
+		}
+
+		String single = row.getSkill();
+		if (single != null && !single.isEmpty())
+			return !disabledSkills.contains(single);
+
+		return !disabledSkills.contains(MISC_SKILL);
+	}
+
+	private List<RecipeRow> activeTabData()
+	{
+		if (activeRows == browseRows)
+			return browseData;
+
+		if (activeRows == watchlistRows)
+			return watchlistData;
+
+		if (activeRows == shoppingRows)
+			return Collections.emptyList();
+
+		return onHandData;
+	}
+
 	private void rebuildSkillOptions()
 	{
 		Set<String> skills = new TreeSet<>();
-		for (RecipeRow row : browseData)
-			if (row.getSkill() != null && !row.getSkill().isEmpty())
+		boolean hasMisc = false;
+		for (RecipeRow row : activeTabData())
+		{
+			if (row.getSkills() != null && !row.getSkills().isEmpty())
+				skills.addAll(row.getSkills());
+			else if (row.getSkill() != null && !row.getSkill().isEmpty())
 				skills.add(row.getSkill());
+			else
+				hasMisc = true;
+		}
 
-		Set<String> options = new LinkedHashSet<>();
-		options.add(ALL_SKILLS);
-		options.addAll(skills);
+		skillOptions.clear();
+		skillOptions.addAll(skills);
+		if (hasMisc)
+			skillOptions.add(MISC_SKILL);
 
-		String selected = (String) skillSelector.getSelectedItem();
-		rebuildingSkills = true;
-		skillSelector.removeAllItems();
-		for (String option : options)
-			skillSelector.addItem(option);
-
-		if (selected != null && options.contains(selected))
-			skillSelector.setSelectedItem(selected);
-
-		rebuildingSkills = false;
+		updateFilterToggle();
 	}
 
 	private static JLabel placeholder(String text)
@@ -970,7 +1362,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		JPanel panel = new JPanel(new BorderLayout(6, 0));
 		panel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		panel.setBorder(BorderFactory.createCompoundBorder(
-				new EmptyBorder(0, 0, compact ? 2 : 3, 0),
+				new EmptyBorder(0, 0, compact ? 4 : 6, 0),
 				new EmptyBorder(compact ? 3 : 5, 7, compact ? 3 : 5, 7)));
 		panel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		panel.addMouseListener(new MouseAdapter()
@@ -981,11 +1373,7 @@ public class ProcessingProfitPanel extends PluginPanel
 				fireSelection(row);
 			}
 		});
-		boolean greyed = row.isLocked() && gatingSelector.getSelectedIndex() == GATING_GREY;
-		String tip = rowTooltip(row);
-		if (tip != null)
-			panel.setToolTipText(tip);
-
+		boolean greyed = row.isLocked() && config.gatingMode() == GatingMode.GREY;
 		if (compact)
 			fillCompactRow(panel, row, greyed);
 		else
@@ -997,9 +1385,7 @@ public class ProcessingProfitPanel extends PluginPanel
 
 	private void fillCompactRow(JPanel panel, RecipeRow row, boolean greyed)
 	{
-		JLabel name = new JLabel(row.getProduct());
-		name.setFont(FontManager.getRunescapeSmallFont());
-		name.setForeground(greyed ? LOCKED_FG : Color.WHITE);
+		JLabel name = nameLabel(row, greyed);
 		panel.add(name, BorderLayout.CENTER);
 
 		JPanel trailing = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
@@ -1016,10 +1402,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		JPanel top = new JPanel(new BorderLayout(6, 0));
 		top.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		top.setAlignmentX(Component.LEFT_ALIGNMENT);
-		JLabel name = new JLabel(row.getProduct());
-		name.setFont(FontManager.getRunescapeSmallFont());
-		name.setForeground(greyed ? LOCKED_FG : Color.WHITE);
-		top.add(name, BorderLayout.CENTER);
+		top.add(nameLabel(row, greyed), BorderLayout.CENTER);
 		if (row.getRecipe() != null)
 		{
 			JPanel starWrap = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -1036,13 +1419,13 @@ public class ProcessingProfitPanel extends PluginPanel
 		bottom.setBorder(new EmptyBorder(2, 0, 0, 0));
 		bottom.add(profitLabel(row, greyed, true), BorderLayout.WEST);
 
-		JPanel meta = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+		JPanel meta = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
 		meta.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		if (row.getRecipeCount() > 1)
 			meta.add(rcpsLabel(row, greyed));
 
 		if (row.isStale())
-			meta.add(staleDot(greyed));
+			meta.add(staleDot(row, greyed));
 
 		if (row.isThrottled() || row.isLowVolume())
 			meta.add(warnTriangle(row, greyed));
@@ -1058,40 +1441,143 @@ public class ProcessingProfitPanel extends PluginPanel
 		panel.add(stack, BorderLayout.CENTER);
 	}
 
+	private JLabel nameLabel(RecipeRow row, boolean greyed)
+	{
+		JLabel name = new JLabel(row.getProduct());
+		name.setFont(FontManager.getRunescapeSmallFont());
+		name.setForeground(greyed ? LOCKED_FG : Color.WHITE);
+		name.setToolTipText(nameTooltip(row));
+		selectOnClick(name, row);
+		return name;
+	}
+
+	private static String nameTooltip(RecipeRow row)
+	{
+		if (row.isLocked() && row.getLockReason() != null)
+			return row.getProduct() + " — Locked: " + row.getLockReason();
+
+		return row.getProduct();
+	}
+
 	private JLabel profitLabel(RecipeRow row, boolean greyed, boolean range)
 	{
-		String text = range && row.getProfitMin() != row.getProfitMax()
+		boolean showRange = range && row.getProfitMin() != row.getProfitMax();
+		String plain = showRange
 				? signed(row.getProfitMin()) + " to " + signed(row.getProfitMax())
 				: signed(row.getProfitEach());
-		JLabel label = new JLabel(text);
+		String full = showRange
+				? signedFull(row.getProfitMin()) + " to " + signedFull(row.getProfitMax())
+				: signedFull(row.getProfitEach());
+		JLabel label = new JLabel(plain);
 		label.setFont(FontManager.getRunescapeSmallFont());
 		label.setForeground(greyed ? LOCKED_FG : (row.getProfitEach() >= 0
 				? ColorScheme.PROGRESS_COMPLETE_COLOR : ColorScheme.PROGRESS_ERROR_COLOR));
+		label.setToolTipText(full);
+		hoverHighlight(label, plain, plain, row);
 		return label;
 	}
 
-	private static JLabel rcpsLabel(RecipeRow row, boolean greyed)
+	private JLabel rcpsLabel(RecipeRow row, boolean greyed)
 	{
-		JLabel label = new JLabel("Rcps: " + row.getRecipeCount());
+		String text = "Rcps: " + row.getRecipeCount();
+		JLabel label = new JLabel(text);
 		label.setFont(FontManager.getRunescapeSmallFont());
 		label.setForeground(greyed ? LOCKED_FG : ColorScheme.LIGHT_GRAY_COLOR);
-		label.setToolTipText(row.getRecipeCount() + " recipes make this item");
+		label.setBorder(new EmptyBorder(0, 0, 0, 8));
+		label.setToolTipText(row.getRecipeCount() + " recipes can make this");
+		hoverHighlight(label, text, text, row);
 		return label;
 	}
 
-	private static JLabel warnTriangle(RecipeRow row, boolean greyed)
+	private JLabel staleDot(RecipeRow row, boolean greyed)
+	{
+		JLabel dot = new JLabel("●");
+		dot.setFont(ICON_FONT);
+		dot.setForeground(greyed ? LOCKED_FG : STALE_DOT);
+		dot.setBorder(new EmptyBorder(0, 4, 0, 0));
+		dot.setToolTipText(STALE_TOOLTIP);
+		hoverHighlight(dot, "●", "●", row);
+		return dot;
+	}
+
+	private JLabel warnTriangle(RecipeRow row, boolean greyed)
 	{
 		JLabel triangle = new JLabel("▲");
-		triangle.setFont(FontManager.getRunescapeSmallFont());
+		triangle.setFont(ICON_FONT);
 		triangle.setForeground(greyed ? LOCKED_FG : WARN_TRIANGLE);
+		triangle.setBorder(new EmptyBorder(0, 4, 0, 0));
 		triangle.setToolTipText(warningText(row));
+		hoverHighlight(triangle, "▲", "▲", row);
 		return triangle;
+	}
+
+	/**
+	 * Wires a label so hovering highlights it (a background tint behind {@code hoverText}, matching the
+	 * Stockpile style) and clicking still opens the row detail. When {@code hoverText} differs from
+	 * {@code plain} the hover also swaps the shown text &mdash; used to reveal a profit's full number.
+	 *
+	 * @param label     the label to wire
+	 * @param plain     the resting text
+	 * @param hoverText the text shown highlighted on hover
+	 * @param row       the row the label belongs to, opened on click
+	 */
+	private void hoverHighlight(JLabel label, String plain, String hoverText, RecipeRow row)
+	{
+		String highlighted = tinted(hoverText);
+		label.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				fireSelection(row);
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				label.setText(highlighted);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				label.setText(plain);
+			}
+		});
+	}
+
+	private void selectOnClick(JComponent component, RecipeRow row)
+	{
+		component.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				fireSelection(row);
+			}
+		});
+	}
+
+	private static String tinted(String text)
+	{
+		return "<html><nobr><span style='background-color:" + hex(HOVER_TINT) + "'>" + text
+				+ "</span></nobr></html>";
+	}
+
+	private static String hex(Color color)
+	{
+		return String.format("#%02x%02x%02x", color.getRed(), color.getGreen(), color.getBlue());
 	}
 
 	private static String signed(long value)
 	{
 		String magnitude = QuantityFormatter.quantityToStackSize(Math.abs(value));
 		return (value >= 0 ? "+" : "-") + magnitude;
+	}
+
+	private static String signedFull(long value)
+	{
+		return (value >= 0 ? "+" : "-") + String.format("%,d", Math.abs(value));
 	}
 
 	private JLabel pinStar(RecipeRow row, boolean greyed)
@@ -1114,8 +1600,8 @@ public class ProcessingProfitPanel extends PluginPanel
 			@Override
 			public void mouseEntered(MouseEvent e)
 			{
-				star.setText("★");
-				star.setForeground(pinned ? STAR_ON.brighter() : STAR_ON);
+				star.setText(pinned ? "☆" : "★");
+				star.setForeground(pinned ? ColorScheme.LIGHT_GRAY_COLOR : STAR_ON);
 			}
 
 			@Override
@@ -1131,8 +1617,9 @@ public class ProcessingProfitPanel extends PluginPanel
 	private static JLabel staleDot(boolean greyed)
 	{
 		JLabel dot = new JLabel("●");
-		dot.setFont(FontManager.getRunescapeSmallFont());
+		dot.setFont(ICON_FONT);
 		dot.setForeground(greyed ? LOCKED_FG : STALE_DOT);
+		dot.setBorder(new EmptyBorder(0, 4, 0, 0));
 		dot.setToolTipText(STALE_TOOLTIP);
 		return dot;
 	}
@@ -1148,26 +1635,6 @@ public class ProcessingProfitPanel extends PluginPanel
 		return "Low trade volume";
 	}
 
-	private static String rowTooltip(RecipeRow row)
-	{
-		if (row.isLocked() && row.getLockReason() != null)
-			return "Locked — " + row.getLockReason();
-
-		StringBuilder sb = new StringBuilder();
-		if (row.isThrottled() || row.isLowVolume())
-			sb.append(warningText(row));
-
-		if (row.isStale())
-		{
-			if (sb.length() > 0)
-				sb.append("; ");
-
-			sb.append(STALE_TOOLTIP);
-		}
-
-		return sb.length() > 0 ? sb.toString() : null;
-	}
-
 	/**
 	 * Shows the full breakdown for one recipe in place of the tab list, with a Back button.
 	 *
@@ -1179,6 +1646,7 @@ public class ProcessingProfitPanel extends PluginPanel
 		{
 			currentDetail = detail;
 			renderDetail();
+			headerPanel.setVisible(false);
 			((CardLayout) center.getLayout()).show(center, "detail");
 		});
 	}
@@ -1196,6 +1664,7 @@ public class ProcessingProfitPanel extends PluginPanel
 
 	private void showList()
 	{
+		headerPanel.setVisible(true);
 		((CardLayout) center.getLayout()).show(center, "list");
 	}
 
@@ -1205,20 +1674,12 @@ public class ProcessingProfitPanel extends PluginPanel
 		content.setBorder(new EmptyBorder(2, 2, 2, 2));
 
 		content.add(backButton());
-		content.add(detailTitle(d.getProduct()));
-		content.add(headline(signed(d.getProfitEach()) + " /ea",
-				d.getProfitEach() >= 0 ? SP_HIGH : SP_LOW));
-
-		List<String> dims = new ArrayList<>();
-		dims.add("GP/hr: " + (d.isThroughputKnown() ? num(d.getGpPerHour()) : "n/a"));
-		dims.add("XP/hr: " + (d.isThroughputKnown() ? num(Math.round(d.getXpPerHour())) : "n/a"));
-		dims.add("Profit/XP: " + Math.round(d.getProfitPerXp()));
-		dims.add("ROI: " + Math.round(d.getRoi() * 100) + "%");
-		content.add(section("Throughput", dims));
-
-		content.add(section("Cost breakdown", costLines(d)));
-		if (d.getChainTree() != null && !d.getChainTree().isEmpty())
-			content.add(chainTreeSection(d.getChainTree()));
+		content.add(itemDetailsHeader(d));
+		content.add(throughputSection(d));
+		content.add(costBreakdownSection(d));
+		ChainTree tree = d.getChainTree();
+		if (tree != null && (!tree.getRoots().isEmpty() || !tree.getTotals().isEmpty()))
+			content.add(chainTreeSection(tree));
 
 		if (d.isFailCapable())
 			content.add(section("Success @ level " + d.getLevel(), successLines(d)));
@@ -1236,6 +1697,233 @@ public class ProcessingProfitPanel extends PluginPanel
 		content.add(watchlistButton());
 		content.add(shoppingActions());
 		return scroll(content);
+	}
+
+	/**
+	 * The Stockpile-style item header: the item icon (natural size, spanning both text rows) with the item
+	 * name over its signed profit beside it, then the examine description in muted italics.
+	 *
+	 * @param d the detail
+	 * @return the item-details header
+	 */
+	private JPanel itemDetailsHeader(RecipeDetail d)
+	{
+		JPanel wrap = listPanel();
+		wrap.setAlignmentX(Component.LEFT_ALIGNMENT);
+		wrap.setBorder(new EmptyBorder(6, 2, 0, 2));
+
+		JPanel row = new JPanel(new BorderLayout(8, 0));
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JLabel icon = new JLabel();
+		icon.setVerticalAlignment(SwingConstants.CENTER);
+		if (itemManager != null && d.getItemId() > 0)
+		{
+			AsyncBufferedImage img = itemManager.getImage(d.getItemId());
+			img.onLoaded(() ->
+			{
+				icon.setIcon(new ImageIcon(img));
+				icon.revalidate();
+				icon.repaint();
+			});
+		}
+
+		row.add(icon, BorderLayout.WEST);
+
+		JPanel text = new JPanel();
+		text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+		text.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JLabel name = new JLabel(d.getProduct());
+		name.setFont(FontManager.getRunescapeBoldFont());
+		name.setForeground(Color.WHITE);
+		name.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		JLabel profit = new JLabel(signed(d.getProfitEach()) + " /ea");
+		profit.setFont(FontManager.getRunescapeSmallFont());
+		profit.setForeground(d.getProfitEach() >= 0 ? SP_HIGH : SP_LOW);
+		profit.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		text.add(name);
+		text.add(profit);
+		row.add(text, BorderLayout.CENTER);
+		capHeight(row);
+		wrap.add(row);
+
+		if (d.getDescription() != null && !d.getDescription().isEmpty())
+		{
+			JTextArea desc = new JTextArea(d.getDescription());
+			desc.setWrapStyleWord(true);
+			desc.setLineWrap(true);
+			desc.setEditable(false);
+			desc.setFocusable(false);
+			desc.setOpaque(false);
+			desc.setFont(FontManager.getRunescapeSmallFont().deriveFont(Font.ITALIC));
+			desc.setForeground(SP_MUTED);
+			desc.setAlignmentX(Component.LEFT_ALIGNMENT);
+			desc.setBorder(new EmptyBorder(6, 2, 0, 2));
+			wrap.add(desc);
+		}
+
+		return wrap;
+	}
+
+	/**
+	 * The Throughput section: a centered header over a 2&times;2 grid of label-over-value cells
+	 * (GP/hr and XP/hr on top, Profit/XP and ROI below), matching the Stockpile layout.
+	 *
+	 * @param d the detail
+	 * @return the throughput section
+	 */
+	private JPanel throughputSection(RecipeDetail d)
+	{
+		JPanel panel = listPanel();
+		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.setBorder(new EmptyBorder(6, 2, 0, 2));
+		panel.add(sectionSeparator());
+		panel.add(sectionHeader("Throughput"));
+
+		String gpHr = d.isThroughputKnown() ? num(d.getGpPerHour()) : "n/a";
+		String xpHr = d.isThroughputKnown() ? num(Math.round(d.getXpPerHour())) : "n/a";
+		String profitXp = Long.toString(Math.round(d.getProfitPerXp()));
+		String roi = Math.round(d.getRoi() * 100) + "%";
+
+		JPanel grid = new JPanel(new GridLayout(2, 2, 8, 6));
+		grid.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		grid.setAlignmentX(Component.LEFT_ALIGNMENT);
+		grid.setBorder(new EmptyBorder(4, 0, 0, 0));
+		grid.add(metricCell("GP/hr", gpHr));
+		grid.add(metricCell("XP/hr", xpHr));
+		grid.add(metricCell("Profit/XP", profitXp));
+		grid.add(metricCell("ROI", roi));
+		capHeight(grid);
+		panel.add(grid);
+		return panel;
+	}
+
+	/**
+	 * A single throughput cell: a muted centered label over a white centered value.
+	 *
+	 * @param label the metric name
+	 * @param value the metric value
+	 * @return the cell
+	 */
+	private static JPanel metricCell(String label, String value)
+	{
+		JPanel cell = new JPanel();
+		cell.setLayout(new BoxLayout(cell, BoxLayout.Y_AXIS));
+		cell.setBackground(ColorScheme.DARK_GRAY_COLOR);
+
+		JLabel name = new JLabel(label, SwingConstants.CENTER);
+		name.setFont(FontManager.getRunescapeSmallFont());
+		name.setForeground(SP_MUTED);
+		name.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+		JLabel val = new JLabel(value, SwingConstants.CENTER);
+		val.setFont(FontManager.getRunescapeSmallFont());
+		val.setForeground(Color.WHITE);
+		val.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+		cell.add(name);
+		cell.add(val);
+		return cell;
+	}
+
+	/**
+	 * The Cost breakdown section, split into an Overview block (input cost, output value, gross profit)
+	 * and a Details block (per-item input and output lines, GE tax, profit/ea), matching the mockup.
+	 *
+	 * @param d the detail
+	 * @return the cost-breakdown section
+	 */
+	private JPanel costBreakdownSection(RecipeDetail d)
+	{
+		JPanel panel = listPanel();
+		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		panel.setBorder(new EmptyBorder(6, 2, 0, 2));
+		panel.add(sectionSeparator());
+		panel.add(sectionHeader("Cost breakdown"));
+
+		panel.add(subHeader("Overview"));
+		panel.add(overviewLine("Input cost:", "-" + num(d.getInputCost()), SP_LOW));
+		panel.add(overviewLine("Output value:", "+" + num(d.getGrossOutput()), SP_HIGH));
+		long gross = d.getGrossOutput() - d.getInputCost();
+		panel.add(overviewLine("Gross profit:", signed(gross), gross >= 0 ? SP_HIGH : SP_LOW));
+
+		panel.add(subHeader("Inputs"));
+		if (d.getInputs().isEmpty())
+			panel.add(whiteLine("—"));
+
+		for (CostLine in : d.getInputs())
+			panel.add(whiteLine(costText(in)));
+
+		if (!d.getTools().isEmpty())
+			panel.add(whiteLine("Tools: " + String.join(", ", d.getTools())));
+
+		panel.add(subHeader("Outputs"));
+		for (CostLine out : d.getOutputs())
+			panel.add(whiteLine(costText(out)));
+
+		panel.add(subHeader("Details"));
+		panel.add(overviewLine("GE tax:", "-" + num(d.getTax()), SP_LOW));
+		if (d.isFailCapable())
+			panel.add(whiteLine("Success-weighted net: " + num(d.getExpectedNet())));
+
+		panel.add(overviewLine("Profit/ea:", signed(d.getProfitEach()),
+				d.getProfitEach() >= 0 ? SP_HIGH : SP_LOW));
+
+		capHeight(panel);
+		return panel;
+	}
+
+	/**
+	 * A left-aligned muted sub-header used to label a block within a section (e.g. Overview / Details).
+	 *
+	 * @param title the sub-header text
+	 * @return the sub-header label
+	 */
+	private static JLabel subHeader(String title)
+	{
+		JLabel label = new JLabel(title);
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setForeground(ColorScheme.LIGHT_GRAY_COLOR);
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		label.setBorder(new EmptyBorder(6, 2, 0, 0));
+		return label;
+	}
+
+	/**
+	 * An overview line with a muted label and a coloured value (e.g. red input cost, green output value).
+	 *
+	 * @param label the muted label text
+	 * @param value the value text
+	 * @param color the value colour
+	 * @return the styled line
+	 */
+	private static JLabel overviewLine(String label, String value, Color color)
+	{
+		JLabel line = new JLabel("<html>" + label + " <font color='" + hex(color) + "'>" + value
+				+ "</font></html>");
+		line.setFont(FontManager.getRunescapeSmallFont());
+		line.setForeground(Color.WHITE);
+		line.setAlignmentX(Component.LEFT_ALIGNMENT);
+		line.setBorder(new EmptyBorder(2, 6, 0, 0));
+		return line;
+	}
+
+	/**
+	 * A white detail line, used for the cost-breakdown value rows so they read clearly against the muted
+	 * sub-headers.
+	 *
+	 * @param text the line text
+	 * @return the white label
+	 */
+	private static JLabel whiteLine(String text)
+	{
+		JLabel label = detailLine(text);
+		label.setForeground(Color.WHITE);
+		return label;
 	}
 
 	private JButton watchlistButton()
@@ -1256,11 +1944,8 @@ public class ProcessingProfitPanel extends PluginPanel
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.setBorder(new EmptyBorder(8, 2, 0, 2));
 
-		JLabel header = new JLabel("Shopping list");
-		header.setFont(FontManager.getRunescapeBoldFont());
-		header.setForeground(SP_GOLD);
-		header.setAlignmentX(Component.LEFT_ALIGNMENT);
-		panel.add(header);
+		panel.add(sectionSeparator());
+		panel.add(sectionHeader("Shopping list"));
 
 		RecipeRow row = detailRow;
 		int makeable = row != null ? row.getMakeableNow() : -1;
@@ -1300,24 +1985,41 @@ public class ProcessingProfitPanel extends PluginPanel
 		return back;
 	}
 
-	private static JLabel detailTitle(String product)
+	/**
+	 * A full-width 1px horizontal rule, used above each detail section header (Stockpile style).
+	 *
+	 * @return a thin divider component sized to fill the panel width
+	 */
+	private static JComponent sectionSeparator()
 	{
-		JLabel label = new JLabel(product);
-		label.setFont(FontManager.getRunescapeBoldFont());
-		label.setForeground(Color.WHITE);
-		label.setAlignmentX(Component.LEFT_ALIGNMENT);
-		label.setBorder(new EmptyBorder(8, 2, 0, 2));
-		return label;
+		JPanel line = new JPanel();
+		line.setBackground(SP_DIVIDER);
+		line.setPreferredSize(new Dimension(0, 1));
+		line.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+		line.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return line;
 	}
 
-	private static JLabel headline(String text, Color color)
+	/**
+	 * A centered, gold, bold section header shown below a {@link #sectionSeparator()} (Stockpile style).
+	 *
+	 * @param title the section title
+	 * @return a full-width row with the title centered
+	 */
+	private static JComponent sectionHeader(String title)
 	{
-		JLabel label = new JLabel(text);
+		JLabel label = new JLabel(title);
 		label.setFont(FontManager.getRunescapeBoldFont());
-		label.setForeground(color);
-		label.setAlignmentX(Component.LEFT_ALIGNMENT);
-		label.setBorder(new EmptyBorder(0, 2, 4, 2));
-		return label;
+		label.setForeground(SP_GOLD);
+		label.setHorizontalAlignment(SwingConstants.CENTER);
+
+		JPanel row = new JPanel(new BorderLayout());
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setBorder(new EmptyBorder(4, 0, 4, 0));
+		row.add(label, BorderLayout.CENTER);
+		capHeight(row);
+		return row;
 	}
 
 	private static JPanel section(String title, List<String> lines)
@@ -1326,11 +2028,8 @@ public class ProcessingProfitPanel extends PluginPanel
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.setBorder(new EmptyBorder(6, 2, 0, 2));
 
-		JLabel header = new JLabel(title);
-		header.setFont(FontManager.getRunescapeBoldFont());
-		header.setForeground(SP_GOLD);
-		header.setAlignmentX(Component.LEFT_ALIGNMENT);
-		panel.add(header);
+		panel.add(sectionSeparator());
+		panel.add(sectionHeader(title));
 
 		for (String line : lines)
 			panel.add(detailLine(line));
@@ -1352,20 +2051,26 @@ public class ProcessingProfitPanel extends PluginPanel
 		return label;
 	}
 
-	private JPanel chainTreeSection(List<ChainNode> tree)
+	private JPanel chainTreeSection(ChainTree tree)
 	{
 		JPanel panel = listPanel();
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.setBorder(new EmptyBorder(6, 2, 0, 2));
 
-		JLabel header = new JLabel("Make-or-buy tree");
-		header.setFont(FontManager.getRunescapeBoldFont());
-		header.setForeground(SP_GOLD);
-		header.setAlignmentX(Component.LEFT_ALIGNMENT);
-		panel.add(header);
+		if (!tree.getRoots().isEmpty())
+		{
+			panel.add(sectionSeparator());
+			panel.add(sectionHeader("Make-or-buy tree"));
+			panel.add(chainLegend());
+			for (ChainNode node : tree.getRoots())
+				panel.add(chainNodeComponent(node, 0));
+		}
 
-		for (ChainNode node : tree)
-			panel.add(chainNodeComponent(node, 0));
+		if (!tree.getTotals().isEmpty())
+			panel.add(materialsSection("Total materials", tree.getTotals(), true));
+
+		if (!tree.getLeftovers().isEmpty())
+			panel.add(materialsSection("Leftovers", tree.getLeftovers(), false));
 
 		return panel;
 	}
@@ -1385,6 +2090,9 @@ public class ProcessingProfitPanel extends PluginPanel
 			children.add(chainNodeComponent(child, depth + 1));
 
 		holder.add(chainNodeRow(node, depth, children));
+		if (node.getViaSkill() != null && !node.isCovered())
+			holder.add(chainSkillLine(node.getViaSkill(), depth));
+
 		if (!node.getChildren().isEmpty())
 			holder.add(children);
 
@@ -1396,65 +2104,161 @@ public class ProcessingProfitPanel extends PluginPanel
 		JPanel row = new JPanel(new BorderLayout(6, 0));
 		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		row.setBorder(new EmptyBorder(2, 6 + depth * 12, 0, 0));
+		row.setBorder(new EmptyBorder(1, 6 + depth * TREE_INDENT, 0, 0));
 
-		JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+		JPanel left = new JPanel();
+		left.setLayout(new BoxLayout(left, BoxLayout.X_AXIS));
 		left.setBackground(ColorScheme.DARK_GRAY_COLOR);
-		if (!node.getChildren().isEmpty())
-			left.add(chainToggle(children));
+		left.add(toggleSlot(node, children));
+		left.add(iconSlot(node.getItemId()));
+		left.add(chainNameLabel(node));
+		if (!node.isCovered() && node.getHeld() > 0)
+		{
+			JLabel have = chainCostLabel("  have " + node.getHeld(), SP_MUTED);
+			have.setToolTipText("You own " + node.getHeld() + " of the " + node.getQty() + " needed");
+			left.add(have);
+		}
 
-		JLabel name = new JLabel(node.getQty() + "× " + node.getLabel());
-		name.setFont(FontManager.getRunescapeSmallFont());
-		name.setForeground(Color.WHITE);
-		left.add(name);
 		row.add(left, BorderLayout.WEST);
-
-		row.add(chainCost(node), BorderLayout.EAST);
+		row.add(chainRight(node), BorderLayout.EAST);
 		capHeight(row);
 		return row;
 	}
 
-	private JLabel chainToggle(JPanel children)
+	private JLabel chainNameLabel(ChainNode node)
 	{
-		JLabel arrow = new JLabel("▾");
-		arrow.setFont(FontManager.getRunescapeSmallFont());
-		arrow.setForeground(SP_MUTED);
-		arrow.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		arrow.addMouseListener(new MouseAdapter()
+		String text = node.getQty() + "× " + node.getLabel();
+		if (node.isCovered())
+		{
+			JLabel name = struckLabel(text, SP_HIGH);
+			name.setToolTipText("You already own " + node.getHeld() + " — nothing to buy or make");
+			return name;
+		}
+
+		JLabel name = new JLabel(text);
+		name.setFont(FontManager.getRunescapeSmallFont());
+		name.setBorder(new EmptyBorder(0, 4, 0, 0));
+		name.setForeground(Color.WHITE);
+		return name;
+	}
+
+	private JLabel chainSkillLine(String skill, int depth)
+	{
+		JLabel line = new JLabel("made via " + skill);
+		line.setFont(FontManager.getRunescapeSmallFont());
+		line.setForeground(SP_MUTED);
+		line.setAlignmentX(Component.LEFT_ALIGNMENT);
+		line.setBorder(new EmptyBorder(0, 6 + depth * TREE_INDENT + TREE_TOGGLE_W + TREE_ICON_W + 4, 1, 0));
+		return line;
+	}
+
+	/**
+	 * A fixed-width slot holding the expand/collapse arrow, or blank space when the node has no children,
+	 * so every row's icon and name line up in a column regardless of whether the row is expandable.
+	 *
+	 * @param node     the node
+	 * @param children the child panel this arrow toggles
+	 * @return the slot label
+	 */
+	private JLabel toggleSlot(ChainNode node, JPanel children)
+	{
+		JLabel slot = new JLabel();
+		fixSize(slot, TREE_TOGGLE_W);
+		if (node.getChildren().isEmpty())
+			return slot;
+
+		slot.setText("▾");
+		slot.setFont(FontManager.getRunescapeSmallFont());
+		slot.setForeground(SP_MUTED);
+		slot.setHorizontalAlignment(SwingConstants.LEFT);
+		slot.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		slot.addMouseListener(new MouseAdapter()
 		{
 			@Override
 			public void mouseClicked(MouseEvent e)
 			{
 				boolean show = !children.isVisible();
 				children.setVisible(show);
-				arrow.setText(show ? "▾" : "▸");
+				slot.setText(show ? "▾" : "▸");
 				detailHolder.revalidate();
 				detailHolder.repaint();
 			}
 		});
-		return arrow;
+		return slot;
 	}
 
-	private static JPanel chainCost(ChainNode node)
+	/**
+	 * A fixed-width, centred item icon slot. The icon is scaled to a uniform height and centred in a
+	 * constant-width box so names align in a column even though item sprites vary in width.
+	 *
+	 * @param itemId the item to show
+	 * @return the slot label
+	 */
+	private JLabel iconSlot(int itemId)
+	{
+		JLabel icon = new JLabel();
+		fixSize(icon, TREE_ICON_W);
+		icon.setHorizontalAlignment(SwingConstants.CENTER);
+		if (itemManager != null && itemId > 0)
+		{
+			AsyncBufferedImage img = itemManager.getImage(itemId);
+			img.onLoaded(() ->
+			{
+				Image scaled = img.getScaledInstance(-1, 16, Image.SCALE_SMOOTH);
+				icon.setIcon(new ImageIcon(scaled));
+				icon.revalidate();
+				icon.repaint();
+			});
+		}
+
+		return icon;
+	}
+
+	private static void fixSize(JLabel label, int width)
+	{
+		Dimension d = new Dimension(width, TREE_ROW_H);
+		label.setPreferredSize(d);
+		label.setMinimumSize(d);
+		label.setMaximumSize(d);
+	}
+
+	private JLabel chainLegend()
+	{
+		JLabel legend = new JLabel("Quantities scaled to ×1 · green struck = already held");
+		legend.setFont(FontManager.getRunescapeSmallFont());
+		legend.setForeground(SP_MUTED);
+		legend.setAlignmentX(Component.LEFT_ALIGNMENT);
+		legend.setBorder(new EmptyBorder(0, 2, 4, 0));
+		return legend;
+	}
+
+	private static JPanel chainRight(ChainNode node)
 	{
 		JPanel costs = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
 		costs.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
-		boolean buyAvail = node.getBuyCost() != ChainNode.UNAVAILABLE;
-		boolean craftAvail = node.getCraftCost() != ChainNode.UNAVAILABLE;
-		if (!buyAvail && !craftAvail)
-		{
-			costs.add(chainCostLabel("?", SP_MUTED));
+		if (node.isCovered())
 			return costs;
+
+		if (node.getViaSkill() != null)
+		{
+			if (node.getSurplus() > 0L)
+			{
+				JLabel extra = chainCostLabel("+" + node.getSurplus() + " left", SP_GOLD);
+				extra.setToolTipText("This step makes " + node.getSurplus() + " more than the tree needs");
+				costs.add(extra);
+			}
 		}
-
-		if (craftAvail)
-			costs.add(chainCostLabel("make " + num(node.getCraftCost()),
-					node.isViaBuy() ? SP_MUTED : SP_HIGH));
-
-		if (buyAvail)
-			costs.add(chainCostLabel("buy " + num(node.getBuyCost()),
-					node.isViaBuy() ? SP_HIGH : SP_MUTED));
+		else if (node.getBuyUnit() == PriceLookup.UNKNOWN)
+		{
+			costs.add(chainCostLabel("gather", SP_MUTED));
+		}
+		else
+		{
+			JLabel buy = chainCostLabel("buy " + num(node.getBuyUnit()), SP_MUTED);
+			buy.setToolTipText("Buy price: " + num(node.getBuyUnit()) + " gp each");
+			costs.add(buy);
+		}
 
 		if (node.isTruncated())
 		{
@@ -1466,6 +2270,60 @@ public class ProcessingProfitPanel extends PluginPanel
 		return costs;
 	}
 
+	private JPanel materialsSection(String title, List<MaterialLine> lines, boolean isTotals)
+	{
+		JPanel panel = listPanel();
+		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+		panel.add(sectionSeparator());
+		panel.add(sectionHeader(title));
+		for (MaterialLine line : lines)
+			panel.add(materialRow(line, isTotals));
+
+		return panel;
+	}
+
+	private JPanel materialRow(MaterialLine line, boolean isTotals)
+	{
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setBorder(new EmptyBorder(2, 6, 0, 0));
+
+		JPanel left = new JPanel();
+		left.setLayout(new BoxLayout(left, BoxLayout.X_AXIS));
+		left.setBackground(ColorScheme.DARK_GRAY_COLOR);
+		left.add(iconSlot(line.getItemId()));
+
+		String text = line.getQty() + "× " + line.getName();
+		boolean covered = isTotals && line.isCovered();
+		JLabel name;
+		if (covered)
+		{
+			name = struckLabel(text, SP_HIGH);
+		}
+		else
+		{
+			name = new JLabel(text);
+			name.setFont(FontManager.getRunescapeSmallFont());
+			name.setBorder(new EmptyBorder(0, 4, 0, 0));
+			name.setForeground(isTotals ? Color.WHITE : SP_GOLD);
+		}
+
+		left.add(name);
+		row.add(left, BorderLayout.WEST);
+
+		if (isTotals && !covered)
+		{
+			long obtain = line.toObtain();
+			String note = line.getHeld() > 0 ? "have " + line.getHeld() + " · get " + obtain : "get " + obtain;
+			row.add(chainCostLabel(note, SP_MUTED), BorderLayout.EAST);
+		}
+
+		capHeight(row);
+		return row;
+	}
+
 	private static JLabel chainCostLabel(String text, Color color)
 	{
 		JLabel label = new JLabel(text);
@@ -1474,30 +2332,37 @@ public class ProcessingProfitPanel extends PluginPanel
 		return label;
 	}
 
-	private static List<String> costLines(RecipeDetail d)
+	/**
+	 * A label that paints a line-through across the text at its vertical middle. The RuneScape pixel
+	 * font places HTML {@code <s>} strikethrough near the baseline, where it reads as an underline, so
+	 * the strike is drawn manually instead.
+	 */
+	private static JLabel struckLabel(String text, Color color)
 	{
-		List<String> lines = new ArrayList<>();
-		for (CostLine in : d.getInputs())
-			lines.add(costText(in));
-
-		if (!d.getTools().isEmpty())
-			lines.add("Tools: " + String.join(", ", d.getTools()));
-
-		lines.add("Input cost: -" + num(d.getInputCost()));
-		for (CostLine out : d.getOutputs())
-			lines.add(costText(out));
-
-		lines.add("Gross: +" + num(d.getGrossOutput()));
-		lines.add("GE tax: -" + num(d.getTax()));
-		if (d.isFailCapable())
-			lines.add("Success-weighted net: " + num(d.getExpectedNet()));
-
-		lines.add("Profit/ea: " + signed(d.getProfitEach()));
-		return lines;
+		JLabel label = new JLabel(text)
+		{
+			@Override
+			protected void paintComponent(Graphics g)
+			{
+				super.paintComponent(g);
+				Insets in = getInsets();
+				FontMetrics fm = g.getFontMetrics(getFont());
+				int y = getHeight() / 2;
+				g.setColor(getForeground());
+				g.drawLine(in.left, y, in.left + fm.stringWidth(getText()), y);
+			}
+		};
+		label.setFont(FontManager.getRunescapeSmallFont());
+		label.setBorder(new EmptyBorder(0, 4, 0, 0));
+		label.setForeground(color);
+		return label;
 	}
 
 	private static String costText(CostLine line)
 	{
+		if (line.getItemId() == PriceLookup.COINS_ID)
+			return line.getQty() + "× " + line.getLabel();
+
 		String unit = line.getUnitPrice() == PriceLookup.UNKNOWN ? "?" : num(line.getUnitPrice());
 		String total = line.getTotal() == PriceLookup.UNKNOWN ? "?" : num(line.getTotal());
 		return line.getQty() + "× " + line.getLabel() + "  @" + unit + " = " + total;

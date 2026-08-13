@@ -75,7 +75,7 @@ public interface ProcessingProfitConfig extends Config
 	)
 	default SourcingMode sourcingMode()
 	{
-		return SourcingMode.ON_HAND;
+		return SourcingMode.HYBRID;
 	}
 
 	/**
@@ -231,6 +231,41 @@ public interface ProcessingProfitConfig extends Config
 		position = 4
 	)
 	default boolean showBankOverlay()
+	{
+		return true;
+	}
+
+	/**
+	 * How recipes the player cannot yet do (skill or quest gated) are shown: hidden, greyed with the
+	 * lock reason, or listed normally.
+	 *
+	 * @return the gating display mode
+	 */
+	@ConfigItem(
+		keyName = "gatingMode",
+		name = "Locked recipes",
+		description = "Hide, grey out (with reason), or show recipes your level or quests don't allow yet.",
+		section = displaySection,
+		position = 5
+	)
+	default GatingMode gatingMode()
+	{
+		return GatingMode.HIDE;
+	}
+
+	/**
+	 * Whether members-only recipes are listed. When off, only free-to-play recipes are shown.
+	 *
+	 * @return true to list members recipes
+	 */
+	@ConfigItem(
+		keyName = "showMembers",
+		name = "Show members recipes",
+		description = "List members-only recipes. Turn off to show only free-to-play recipes.",
+		section = displaySection,
+		position = 6
+	)
+	default boolean showMembers()
 	{
 		return true;
 	}

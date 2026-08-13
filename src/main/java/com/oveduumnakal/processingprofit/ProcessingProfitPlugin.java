@@ -130,7 +130,6 @@ public class ProcessingProfitPlugin extends Plugin
 	private final RecipeRepository recipes = new RecipeRepository();
 	private final Map<Integer, Map<Integer, Integer>> containerCache = new ConcurrentHashMap<>();
 	private final ProfitCalculator calculator = new ProfitCalculator();
-	private final SourcingEngine sourcing = new SourcingEngine(calculator);
 	private final List<ShoppingRequest> shoppingSelection = new ArrayList<>();
 	private volatile Watchlist watchlist = new Watchlist();
 	private volatile Set<String> pinnedSnapshot = Collections.emptySet();
@@ -148,6 +147,7 @@ public class ProcessingProfitPlugin extends Plugin
 	private ScheduledFuture<?> refreshFuture;
 	private IronmanValuation ironmanLens;
 	private volatile List<RecipeRow> onHandSnapshot = Collections.emptyList();
+	private volatile Map<Integer, Integer> heldSnapshot = Collections.emptyMap();
 	private volatile boolean bankOpen;
 	private volatile boolean loaded;
 
@@ -155,14 +155,11 @@ public class ProcessingProfitPlugin extends Plugin
 	protected void startUp()
 	{
 		ironmanLens = new IronmanValuation(prices, prices::mapping);
-		panel = new ProcessingProfitPanel();
-		panel.setModeListener(mode -> rebuildShopping());
+		panel = new ProcessingProfitPanel(config, configManager, itemManager);
 		panel.setSelectionListener(this::showDetail);
 		panel.setShoppingAddListener(this::addToShopping);
 		panel.setShoppingClearListener(this::clearShopping);
 		panel.setPinToggleListener(this::togglePin);
-		panel.setValuationListener(this::onValuationSelected);
-		panel.setValuationLens(config.valuationLens());
 		navButton = NavigationButton.builder()
 				.tooltip("Processing Profit")
 				.icon(navIcon())
@@ -272,6 +269,7 @@ public class ProcessingProfitPlugin extends Plugin
 		else if (state == GameState.LOGIN_SCREEN || state == GameState.HOPPING)
 		{
 			containerCache.clear();
+			heldSnapshot = Collections.emptyMap();
 			bankOpen = false;
 			liveLevels = Collections.emptyMap();
 			completedQuests = Collections.emptySet();
@@ -303,24 +301,13 @@ public class ProcessingProfitPlugin extends Plugin
 	public void onConfigChanged(ConfigChanged event)
 	{
 		if (!ProcessingProfitConfig.GROUP.equals(event.getGroup())
-				|| WATCHLIST_KEY.equals(event.getKey()))
+				|| WATCHLIST_KEY.equals(event.getKey())
+				|| event.getKey().startsWith("panelFilter"))
 			return;
 
-		panel.setValuationLens(config.valuationLens());
 		recomputeModifiers();
 		rebuildRecipeTabs();
 		rebuildShopping();
-	}
-
-	/**
-	 * Persists the sidebar's chosen valuation lens to config; the resulting {@code onConfigChanged}
-	 * rebuilds every tab through the new lens.
-	 *
-	 * @param lens the newly selected lens
-	 */
-	private void onValuationSelected(ValuationLens lens)
-	{
-		configManager.setConfiguration(ProcessingProfitConfig.GROUP, "valuationLens", lens);
 	}
 
 	@Subscribe
@@ -517,11 +504,13 @@ public class ProcessingProfitPlugin extends Plugin
 		{
 			if (client.getGameState() != GameState.LOGGED_IN)
 			{
+				heldSnapshot = Collections.emptyMap();
 				panel.setOnHandRows(Collections.emptyList());
 				return;
 			}
 
 			Map<Integer, Integer> held = readHeld();
+			heldSnapshot = held;
 			executor.execute(() -> buildOnHand(held));
 		});
 	}
@@ -529,6 +518,8 @@ public class ProcessingProfitPlugin extends Plugin
 	private void buildOnHand(Map<Integer, Integer> held)
 	{
 		PriceConfig cfg = priceConfig();
+		PriceLookup lens = activeLens();
+		HeldMakeable makeable = new HeldMakeable(held, recipes::forOutput);
 		List<RecipeRow> rows = new ArrayList<>();
 		for (Recipe recipe : recipes.all())
 		{
@@ -536,16 +527,16 @@ public class ProcessingProfitPlugin extends Plugin
 			if (outId == null)
 				continue;
 
-			int level = primaryLevel(recipe);
-			SourcingResult result = sourcing.evaluate(recipe, activeLens(), cfg, level,
-					activeModifiers, held, SourcingMode.ON_HAND,
-					SourcingEngine.DEFAULT_HYBRID_TARGET);
-			if (result.getMakeableNow() <= 0 || result.getProfitEach() < config.minProfit())
+			int made = makeable.makeable(recipe);
+			if (made <= 0)
 				continue;
 
-			ProfitResult profit = calculator.evaluate(recipe, activeLens(), cfg, level,
-					activeModifiers);
-			rows.add(toRow(recipe, profit, result.getMakeableNow()));
+			int level = primaryLevel(recipe);
+			ProfitResult profit = calculator.evaluate(recipe, lens, cfg, level, activeModifiers);
+			if (profit.getProfitEach() < config.minProfit())
+				continue;
+
+			rows.add(toRow(recipe, profit, made));
 		}
 
 		List<RecipeRow> deduped = dedupeByProduct(rows);
@@ -621,9 +612,24 @@ public class ProcessingProfitPlugin extends Plugin
 			ChainValuator valuator = new ChainValuator(recipes, lens, cfg, this::levelFor,
 					activeModifiers);
 			RecipeDetail detail = DetailBuilder.build(recipe, lens, cfg, primaryLevel(recipe),
-					activeModifiers, calculator, valuator);
+					activeModifiers, calculator, valuator, heldSnapshot, descriptionFor(recipe));
 			panel.showDetail(detail);
 		});
+	}
+
+	/**
+	 * @param recipe the recipe whose primary output supplies the detail description
+	 * @return the primary output's examine text from the wiki mapping, or {@code null} when unavailable
+	 */
+	private String descriptionFor(Recipe recipe)
+	{
+		RecipeOutput primary = recipe.getOutputs().get(0);
+		Integer id = primary.getItemId();
+		if (id == null)
+			return null;
+
+		ItemMapping m = prices.mapping(id);
+		return m == null ? null : m.getExamine();
 	}
 
 	private void addToShopping(ShoppingRequest request)
@@ -704,7 +710,7 @@ public class ProcessingProfitPlugin extends Plugin
 		if (!loaded)
 			return;
 
-		if (panel.selectedMode() != SourcingMode.HYBRID)
+		if (config.sourcingMode() != SourcingMode.HYBRID)
 		{
 			executor.execute(() -> buildShopping(Collections.emptyMap()));
 			return;
@@ -750,7 +756,8 @@ public class ProcessingProfitPlugin extends Plugin
 		RecipeOutput primary = recipe.getOutputs().get(0);
 		SkillReq skill = recipe.primarySkill();
 		int levelReq = skill == null ? 1 : skill.getLevel();
-		String skillName = skill == null ? "" : skill.getSkill();
+		String skillName = skill == null ? "" : canonicalSkill(skill.getSkill());
+		List<String> filterSkills = filterSkills(recipe, primary.getName());
 		SuccessModel model = recipe.getSuccess();
 		Double success = model == null || model.getType() == SuccessType.ALWAYS
 				? null : result.getSuccessChance();
@@ -759,11 +766,73 @@ public class ProcessingProfitPlugin extends Plugin
 		LiquidityResult liq = ironman()
 				? new LiquidityResult(0, false, false)
 				: Liquidity.assess(recipe, this::buyLimitOf, volume);
-		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, result.getProfitEach(),
+		return new RecipeRow(primary.getItemId(), primary.getName(), skillName, filterSkills,
+				result.getProfitEach(),
 				result.getRoi(), result.getGpPerHour(), result.getXpPerHour(), result.isThroughputKnown(),
 				success, levelReq, volume, makeable, result.isStalePrices(), gate.isLocked(),
 				gate.getReason(), liq.getUnitsPerWindow(), liq.isThrottled(), liq.isLowVolume(),
 				recipe.isMembers(), 1, result.getProfitEach(), result.getProfitEach(), recipe);
+	}
+
+	/**
+	 * The set of skills a recipe matches in the skill filter: every one of its skill requirements
+	 * (canonicalised), plus {@code Crafting} when the product is a piece of jewellery, so enchanted
+	 * jewellery tagged only as Magic (e.g. Ring of recoil) is still found under Crafting.
+	 *
+	 * @param recipe  the recipe
+	 * @param product the primary output name
+	 * @return the distinct skills, canonicalised
+	 */
+	private static List<String> filterSkills(Recipe recipe, String product)
+	{
+		Set<String> skills = new LinkedHashSet<>();
+		for (SkillReq req : recipe.getSkills())
+		{
+			String name = canonicalSkill(req.getSkill());
+			if (!name.isEmpty())
+				skills.add(name);
+		}
+
+		if (isJewellery(product))
+			skills.add("Crafting");
+
+		return new ArrayList<>(skills);
+	}
+
+	/**
+	 * Whether a product name is a piece of jewellery (ring, amulet, necklace or bracelet), matched on
+	 * whole words so {@code "Bow string"} is not mistaken for a ring.
+	 *
+	 * @param product the product name
+	 * @return true when the product is jewellery
+	 */
+	private static boolean isJewellery(String product)
+	{
+		if (product == null)
+			return false;
+
+		for (String word : product.toLowerCase().split("[^a-z]+"))
+			if (word.equals("ring") || word.equals("amulet") || word.equals("necklace")
+					|| word.equals("bracelet"))
+				return true;
+
+		return false;
+	}
+
+	/**
+	 * Normalises a wiki skill name to a single canonical casing (first letter upper, rest lower) so a
+	 * stray lowercase variant such as {@code "cooking"} does not list separately from {@code "Cooking"}
+	 * in the skill filter.
+	 *
+	 * @param skill the raw wiki skill name, may be null or empty
+	 * @return the canonicalised skill name
+	 */
+	private static String canonicalSkill(String skill)
+	{
+		if (skill == null || skill.isEmpty())
+			return "";
+
+		return Character.toUpperCase(skill.charAt(0)) + skill.substring(1).toLowerCase();
 	}
 
 	private int buyLimitOf(int itemId)

@@ -24,6 +24,8 @@
  */
 package com.oveduumnakal.processingprofit;
 
+import java.util.List;
+
 import lombok.Builder;
 import lombok.Value;
 
@@ -48,6 +50,7 @@ public class RecipeRow
 	int itemId;
 	String product;
 	String skill;
+	List<String> skills;
 	long profitEach;
 	double roi;
 	long gpPerHour;

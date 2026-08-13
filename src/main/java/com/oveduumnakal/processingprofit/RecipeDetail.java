@@ -35,8 +35,10 @@ import lombok.Value;
  * recipe is {@code failCapable} it also carries the success breakdown ({@code baseChance} at the level
  * &rarr; {@code finalChance} after {@code modifierNotes}, the {@code yieldMult}, and the
  * {@code failureLabel}). {@code breakEven} lists the highest per-unit price each input can reach while
- * the recipe still breaks even. {@code chainTree} is the recursive make-or-buy tree over the inputs. A
- * pure view-model built by {@link DetailBuilder}.
+ * the recipe still breaks even. {@code chainTree} is the recursive make-or-buy breakdown over the
+ * inputs (the scaled tree plus the Total materials and Leftovers roll-ups).
+ * {@code description} is the item's examine text (may be {@code null}). A pure view-model built by
+ * {@link DetailBuilder}.
  */
 @Value
 public class RecipeDetail
@@ -65,5 +67,6 @@ public class RecipeDetail
 	String failureLabel;
 	List<CostLine> breakEven;
 	boolean stale;
-	List<ChainNode> chainTree;
+	ChainTree chainTree;
+	String description;
 }

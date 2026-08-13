@@ -111,7 +111,8 @@ public class DetailBuilderTest
 		MapPrices prices = new MapPrices().put(3, 100, 100).put(1, 300, 200);
 
 		RecipeDetail d = DetailBuilder.build(rec, prices, new PriceConfig(false, 1.0), 99,
-				Collections.emptyList(), calc, valuator(rec, prices));
+				Collections.emptyList(), calc, valuator(rec, prices), Collections.emptyMap(),
+				"A useful widget.");
 
 		assertEquals("Widget", d.getProduct());
 		assertEquals(1, d.getInputs().size());
@@ -137,7 +138,7 @@ public class DetailBuilderTest
 		MapPrices prices = new MapPrices().put(3, 100, 100).put(1, 300, 200);
 
 		RecipeDetail d = DetailBuilder.build(rec, prices, new PriceConfig(false, 1.0), 30,
-				Collections.emptyList(), calc, valuator(rec, prices));
+				Collections.emptyList(), calc, valuator(rec, prices), Collections.emptyMap(), null);
 
 		assertTrue(d.isFailCapable());
 		assertEquals(burn.chance(30), d.getBaseChance(), 1e-9);

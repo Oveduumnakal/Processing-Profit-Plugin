@@ -81,6 +81,37 @@ public class ChainValuator
 		return acquire(itemId, 0, new HashSet<>());
 	}
 
+	/**
+	 * The level resolver this valuator was built with, so a companion builder (e.g.
+	 * {@link ChainTreeBuilder}) can compute action counts under the same context.
+	 *
+	 * @return the skill-name to live-level function
+	 */
+	ToIntFunction<String> levelFn()
+	{
+		return levelFn;
+	}
+
+	/**
+	 * The success modifiers this valuator was built with.
+	 *
+	 * @return the active modifiers
+	 */
+	List<SuccessModifier> active()
+	{
+		return active;
+	}
+
+	/**
+	 * The price source this valuator was built with, so a companion builder can read leaf buy prices.
+	 *
+	 * @return the price lookup
+	 */
+	PriceLookup prices()
+	{
+		return prices;
+	}
+
 	private Sourcing acquire(int itemId, int depth, Set<Integer> onStack)
 	{
 		Sourcing cached = memo.get(itemId);
