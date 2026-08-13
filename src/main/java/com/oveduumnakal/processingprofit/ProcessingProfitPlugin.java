@@ -158,6 +158,7 @@ public class ProcessingProfitPlugin extends Plugin
 		ironmanLens = new IronmanValuation(prices, prices::mapping);
 		panel = new ProcessingProfitPanel(config, configManager, itemManager);
 		panel.setSelectionListener(this::showDetail);
+		panel.setPopOutListener(this::popOutTree);
 		panel.setShoppingAddListener(this::addToShopping);
 		panel.setShoppingClearListener(this::clearShopping);
 		panel.setPinToggleListener(this::togglePin);
@@ -617,6 +618,31 @@ public class ProcessingProfitPlugin extends Plugin
 					activeModifiers, calculator, valuator, heldSnapshot, descriptionFor(recipe));
 			panel.showDetail(detail);
 		});
+	}
+
+	/**
+	 * Opens the standalone graphical recipe-tree window for a row's recipe. The window rebuilds the tree
+	 * off-thread on every filter change via the supplied callback, which builds a fresh valuator each time
+	 * against the current lens/level/holdings so the numbers stay live.
+	 *
+	 * @param row the row whose recipe the tree is built for
+	 */
+	private void popOutTree(RecipeRow row)
+	{
+		Recipe recipe = row.getRecipe();
+		if (!loaded || recipe == null)
+			return;
+
+		RecipeTreeWindow.TreeSupplier supplier = (options, excludeOwned) ->
+		{
+			PriceConfig cfg = priceConfig();
+			PriceLookup lens = activeLens();
+			ChainValuator valuator = new ChainValuator(recipes, lens, cfg, this::levelFor, activeModifiers);
+			Map<Integer, Integer> held = excludeOwned ? heldSnapshot : Collections.emptyMap();
+			return ChainTreeBuilder.build(recipe, valuator, held, 1L, options);
+		};
+		RecipeOutput primary = recipe.getOutputs().get(0);
+		RecipeTreeWindow.open(primary.getName(), itemManager, supplier);
 	}
 
 	/**

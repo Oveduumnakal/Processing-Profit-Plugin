@@ -180,6 +180,7 @@ public class ProcessingProfitPanel extends PluginPanel
 	private MaterialTab shoppingTab;
 
 	private Consumer<RecipeRow> selectionListener;
+	private Consumer<RecipeRow> popOutListener;
 	private Consumer<ShoppingRequest> shoppingAddListener;
 	private Consumer<RecipeRow> pinToggleListener;
 	private Runnable shoppingClearListener;
@@ -1004,6 +1005,23 @@ public class ProcessingProfitPanel extends PluginPanel
 		this.selectionListener = listener;
 	}
 
+	/**
+	 * Registers a callback fired when the user clicks a row's pop-out button, to open the standalone
+	 * graphical recipe-tree window for that recipe.
+	 *
+	 * @param listener the callback, invoked with the row
+	 */
+	public void setPopOutListener(Consumer<RecipeRow> listener)
+	{
+		this.popOutListener = listener;
+	}
+
+	private void firePopOut(RecipeRow row)
+	{
+		if (popOutListener != null && row != null && row.getRecipe() != null)
+			popOutListener.accept(row);
+	}
+
 	private boolean selectTab(JPanel rows)
 	{
 		activeRows = rows;
@@ -1579,7 +1597,10 @@ public class ProcessingProfitPanel extends PluginPanel
 		trailing.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		trailing.add(profitLabel(row, greyed, false));
 		if (row.getRecipe() != null)
+		{
+			trailing.add(popOutButton(row, greyed));
 			trailing.add(pinStar(row, greyed));
+		}
 
 		panel.add(trailing, BorderLayout.EAST);
 	}
@@ -1592,8 +1613,9 @@ public class ProcessingProfitPanel extends PluginPanel
 		top.add(nameLabel(row, greyed), BorderLayout.CENTER);
 		if (row.getRecipe() != null)
 		{
-			JPanel starWrap = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+			JPanel starWrap = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
 			starWrap.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+			starWrap.add(popOutButton(row, greyed));
 			starWrap.add(pinStar(row, greyed));
 			top.add(starWrap, BorderLayout.EAST);
 		}
@@ -1799,6 +1821,65 @@ public class ProcessingProfitPanel extends PluginPanel
 			}
 		});
 		return star;
+	}
+
+	/**
+	 * A small "open in new window" button that opens the standalone graphical recipe-tree window for the
+	 * row's recipe. Hover-tints gold; greyed for locked rows.
+	 *
+	 * @param row    the row whose recipe the tree is built for
+	 * @param greyed whether the row is gated/dimmed
+	 * @return the pop-out button
+	 */
+	private JLabel popOutButton(RecipeRow row, boolean greyed)
+	{
+		Color base = greyed ? LOCKED_FG : ColorScheme.LIGHT_GRAY_COLOR;
+		JLabel button = new JLabel(popOutIcon(base));
+		button.setToolTipText("Pop out recipe tree");
+		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		button.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseClicked(MouseEvent e)
+			{
+				firePopOut(row);
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent e)
+			{
+				button.setIcon(popOutIcon(SP_GOLD));
+			}
+
+			@Override
+			public void mouseExited(MouseEvent e)
+			{
+				button.setIcon(popOutIcon(base));
+			}
+		});
+		return button;
+	}
+
+	/**
+	 * Paints a small "open in new window" icon in the given colour: a box with a diagonal arrow leaving
+	 * its top-right.
+	 *
+	 * @param color the icon colour
+	 * @return the pop-out icon
+	 */
+	private static Icon popOutIcon(Color color)
+	{
+		int size = 14;
+		BufferedImage img = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = img.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g.setColor(color);
+		g.drawRect(1, 5, 7, 7);
+		g.drawLine(6, 7, 12, 1);
+		g.drawLine(12, 1, 8, 1);
+		g.drawLine(12, 1, 12, 5);
+		g.dispose();
+		return new ImageIcon(img);
 	}
 
 	private static JLabel staleDot(boolean greyed)
