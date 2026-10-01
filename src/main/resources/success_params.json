@@ -1,4 +1,10 @@
 {
+  "245": {
+    "type": "LINEAR_INTERP",
+    "low": -125,
+    "high": 260,
+    "req": 65
+  },
   "251": {
     "type": "LINEAR_INTERP",
     "low": 170,
